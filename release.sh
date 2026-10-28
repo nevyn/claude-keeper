@@ -19,6 +19,12 @@ die() { print -u2 "release: $*"; exit 1 }
 current() { sed -nE 's/^let version = "([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' $version_file }
 next_patch() { local v=(${(s:.:)1}); print "$v[1].$v[2].$((v[3] + 1))" }
 tagged() { git ls-remote --exit-code --tags origin "refs/tags/v$1" >/dev/null }
+# spctl and syspolicy_check reject a bare Mach-O, so ask the ticket service that stapler and Gatekeeper use.
+has_ticket() {
+  local cdhash=$(codesign -dvvv --arch $2 $1 2>&1 | sed -n 's/^CDHash=//p')
+  curl -fsS -X POST -H 'Content-Type: application/json' -d "{\"records\":[{\"recordName\":\"2/2/$cdhash\"}]}" \
+    https://api.apple-cloudkit.com/database/1/com.apple.gk.ticket-delivery/production/public/records/lookup | grep -q '"signedTicket"'
+}
 
 [[ -z "$(git status --porcelain)" ]] || die "working tree is not clean"
 [[ "$(git branch --show-current)" == main ]] || die "not on main"
@@ -65,7 +71,9 @@ codesign --verify --strict -v $dist/claude-keeper
 submission=$(xcrun notarytool submit $dist/claude-keeper.zip --keychain-profile $profile --keychain $keychain --wait)
 print -r -- $submission
 [[ $submission == *"status: Accepted"* ]] || die "notarization was not accepted; see xcrun notarytool log <id> --keychain-profile $profile --keychain $keychain"
-spctl --assess --type execute -vv $dist/claude-keeper
+for arch in arm64 x86_64; do
+  if ! has_ticket $dist/claude-keeper $arch; then die "Apple has no notarization ticket for the $arch slice"; fi
+done
 (cd $dist && shasum -a 256 claude-keeper.zip > claude-keeper.zip.sha256)
 
 git tag "v$version"
