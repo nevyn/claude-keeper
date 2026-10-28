@@ -1,0 +1,12 @@
+name: check
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release
+      - run: .build/release/claude-keeper selftest
