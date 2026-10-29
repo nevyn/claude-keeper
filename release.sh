@@ -4,6 +4,7 @@
 #   ./release.sh 0.2.0      release this version
 #   ./release.sh redo       delete the latest release and its tag, then release the next patch with its notes
 # NOTES=file overrides the notes, which default to the commit subjects since the previous tag.
+# Also publishes the Sparkle feed (appcast.xml), signed with the EdDSA key in the login keychain; see docs/updates.md.
 set -euo pipefail
 cd "${0:A:h}"
 
@@ -15,16 +16,31 @@ version_file=Sources/claude-keeper/Version.swift
 dist=dist
 app="$dist/Claude Keeper.app"
 zip=$dist/Claude-Keeper.zip
+appcast=$dist/appcast.xml
+sparkle_bin=.build/artifacts/sparkle/Sparkle/bin
+sparkle_account=claude-keeper
+repo_url=https://github.com/nevyn/claude-keeper
 
 die() { print -u2 "release: $*"; exit 1 }
 current() { sed -nE 's/^let version = "([0-9]+\.[0-9]+\.[0-9]+)"$/\1/p' $version_file }
 next_patch() { local v=(${(s:.:)1}); print "$v[1].$v[2].$((v[3] + 1))" }
 tagged() { git ls-remote --exit-code --tags origin "refs/tags/v$1" >/dev/null }
+zip_app() {
+  rm -f $zip
+  xattr -cr "$app"
+  ditto -c -k --keepParent --norsrc "$app" $zip
+  # AppleDouble entries make Gatekeeper reject the app when something other than Archive Utility unzips it.
+  [[ "$(unzip -l $zip)" != *"/._"* ]] || die "$zip contains AppleDouble (._) entries"
+}
 
 [[ -z "$(git status --porcelain)" ]] || die "working tree is not clean"
 [[ "$(git branch --show-current)" == main ]] || die "not on main"
 git fetch -q origin
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "main differs from origin/main; pull or push first"
+[[ -x $sparkle_bin/generate_appcast ]] || die "$sparkle_bin/generate_appcast is missing; run swift package resolve"
+public_key=$(/usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" app/Info.plist)
+keychain_key=$($sparkle_bin/generate_keys --account $sparkle_account -p) || die "no Sparkle signing key for account $sparkle_account in the login keychain; see docs/updates.md"
+[[ $keychain_key == $public_key ]] || die "the Sparkle key for account $sparkle_account does not match SUPublicEDKey in app/Info.plist"
 
 notes=$(mktemp -t claude-keeper-notes)
 version=$(current)
@@ -58,23 +74,33 @@ exe="$app/Contents/MacOS/ClaudeKeeper"
 "$exe" selftest
 [[ "$(codesign -dv "$app" 2>&1)" == *$'\nTeamIdentifier='$team$'\n'* ]] || die "signature lacks TeamIdentifier=$team"
 
-rm -f $zip
-ditto -c -k --keepParent "$app" $zip
+zip_app
 submission=$(xcrun notarytool submit $zip --keychain-profile $profile --keychain $keychain --wait)
 print -r -- $submission
 [[ $submission == *"status: Accepted"* ]] || die "notarization was not accepted; see xcrun notarytool log <id> --keychain-profile $profile --keychain $keychain"
 xcrun stapler staple "$app"
 spctl --assess --type execute -vv "$app"
-rm -f $zip
-ditto -c -k --keepParent "$app" $zip  # again, now with the stapled ticket
+zip_app  # again, now with the stapled ticket
 (cd $dist && shasum -a 256 ${zip:t} > ${zip:t}.sha256)
+
+# The feed lists only this release: generate_appcast sees just its zip and notes.
+feed_dir=$(mktemp -d -t claude-keeper-appcast)
+cp $zip $feed_dir/
+cp $notes $feed_dir/${zip:t:r}.md
+rm -f $appcast
+$sparkle_bin/generate_appcast --account $sparkle_account --embed-release-notes \
+  --download-url-prefix "$repo_url/releases/download/v$version/" -o $PWD/$appcast $feed_dir
+feed=$(<$appcast)
+[[ $feed == *"<sparkle:version>$version</sparkle:version>"* && $feed == *"sparkle:edSignature="* ]] || die "$appcast does not offer a signed v$version; see $feed_dir"
 
 git tag "v$version"
 git push -q origin main "v$version"
-gh release create "v$version" $zip $zip.sha256 --title "v$version" --notes-file $notes
+gh release create "v$version" $zip $zip.sha256 $appcast --title "v$version" --notes-file $notes --latest
 rm -f $notes
 
 check=$(mktemp -d -t claude-keeper-check)
-curl -fsSL -o $check/${zip:t} "https://github.com/nevyn/claude-keeper/releases/download/v$version/${zip:t}"
+curl -fsSL -o $check/${zip:t} "$repo_url/releases/download/v$version/${zip:t}"
 cmp -s $check/${zip:t} $zip || die "downloaded zip differs from $zip"
-print "Released v$version; the download matches $zip."
+curl -fsSL -o $check/appcast.xml "$repo_url/releases/latest/download/appcast.xml"
+[[ "$(<$check/appcast.xml)" == *"<sparkle:version>$version</sparkle:version>"* ]] || die "$repo_url/releases/latest/download/appcast.xml does not offer v$version; see $check/appcast.xml"
+print "Released v$version; the download matches $zip, and the feed offers it."
