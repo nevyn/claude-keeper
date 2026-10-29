@@ -28,6 +28,21 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Claude Keeper forwards each claude:// link to the Claude instance that should open it.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Claude link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>claude</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright 2026 Nevyn Bengtsson. MIT License.</string>
 </dict>

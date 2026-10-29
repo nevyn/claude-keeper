@@ -7,6 +7,15 @@ import SwiftUI
 struct SetupState: Equatable {
     enum Location: Equatable { case applications, elsewhere, translocated }
     enum Agent: Equatable { case off, on, needsApproval }
+    enum LinkRouting: Equatable {
+        case off, on
+        /// Routing is on, but the user has not answered the Automation prompt, or no instance runs to ask it against.
+        case needsAutomation(instanceRunning: Bool)
+        /// The user denied Claude Keeper the Automation permission for Claude.
+        case denied
+        /// `automationStatus` returned an unexpected status.
+        case failed(OSStatus)
+    }
 
     var location: Location
     var instances: [String]
@@ -14,6 +23,7 @@ struct SetupState: Equatable {
     var accessibility: Bool
     var desktopCount: Int
     var missingShortcuts: [Int]
+    var linkRouting: LinkRouting = .off
 
     var placementReady: Bool { accessibility && missingShortcuts.isEmpty }
     var done: Bool { agent == .on && placementReady }
@@ -30,16 +40,51 @@ struct SetupState: Equatable {
         default: .off
         }
         let count = desktops().count
-        return SetupState(location: location, instances: discoverInstances().map(\.name), agent: agent,
+        let instances = discoverInstances()
+        return SetupState(location: location, instances: instances.map(\.name), agent: agent,
                           accessibility: AXIsProcessTrusted(), desktopCount: count,
-                          missingShortcuts: (1...max(1, min(count, 16))).filter { desktopShortcut($0) == nil })
+                          missingShortcuts: (1...max(1, min(count, 16))).filter { desktopShortcut($0) == nil },
+                          linkRouting: linkRoutingState(instances))
     }
+
+    private static func linkRoutingState(_ instances: [Instance]) -> LinkRouting {
+        guard linkRoutingOn else { return .off }
+        guard let pid = firstRunningInstance(instances) else { return .needsAutomation(instanceRunning: false) }
+        switch automationStatus(pid: pid, ask: false) {
+        case noErr: return .on
+        case OSStatus(errAEEventNotPermitted): return .denied
+        case OSStatus(errAEEventWouldRequireUserConsent): return .needsAutomation(instanceRunning: true)
+        case OSStatus(procNotFound): return .needsAutomation(instanceRunning: false)
+        case let status: return .failed(status)
+        }
+    }
+}
+
+/// The main pid of the first running instance in discovery order. The Automation permission is asked against it;
+/// TCC keys the grant on Claude's bundle ID, so it covers every instance.
+func firstRunningInstance(_ instances: [Instance]) -> Int32? {
+    let running = runningInstances(instances)
+    return instances.lazy.compactMap { running[$0.name] }.first
+}
+
+/// Shows the Automation prompt against the first running instance if the user has not answered it, and blocks until
+/// they do.
+private func askForAutomation() {
+    if let pid = firstRunningInstance(discoverInstances()) { _ = automationStatus(pid: pid, ask: true) }
+}
+
+/// Logs `error` in full and returns the message that the link routing step shows.
+private func linkRoutingFailure(_ what: String, _ error: Error) -> String {
+    log("error: \(what): \(error)")
+    return "\(what): \((error as? LinkError)?.description ?? error.localizedDescription)"
 }
 
 @MainActor
 final class Setup: ObservableObject {
     @Published private(set) var state: SetupState
     @Published var error: String?
+    @Published private(set) var linkRoutingError: String?
+    @Published private(set) var linkRoutingBusy = false
     private var timer: Timer?
     private var agentHasGrant = false
 
@@ -72,6 +117,45 @@ final class Setup: ObservableObject {
     func turnOff() {
         do { try uninstallAgent(); error = nil } catch { self.error = "Could not turn off the keeper: \(error.localizedDescription)" }
         refresh()
+    }
+
+    func turnOnLinkRouting() {
+        let app = Bundle.main.bundleURL
+        changeLinkRouting {
+            do {
+                try FileManager.default.createDirectory(atPath: stateDir, withIntermediateDirectories: true)
+                try Data().write(to: URL(fileURLWithPath: linkRoutingFlag))
+            } catch { return linkRoutingFailure("Could not turn on link routing", error) }
+            do { try setSchemeHandler(app) } catch { return linkRoutingFailure("Could not make \(app.path) the \(linkScheme):// handler", error) }
+            askForAutomation()
+            return nil
+        }
+    }
+
+    func allowLinkRouting() { changeLinkRouting { askForAutomation(); return nil } }
+
+    func turnOffLinkRouting() {
+        changeLinkRouting {
+            do { if linkRoutingOn { try FileManager.default.removeItem(atPath: linkRoutingFlag) } }
+            catch { return linkRoutingFailure("Could not turn off link routing", error) }
+            do { try setSchemeHandler(URL(fileURLWithPath: claudeBundle)) }
+            catch { return linkRoutingFailure("Could not give \(linkScheme):// links back to \(claudeBundle)", error) }
+            return nil
+        }
+    }
+
+    func openAutomationSettings() { open("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") }
+
+    /// Runs `work` off the main thread, since it waits for LaunchServices or for the user to answer the Automation
+    /// prompt. `work` returns the message to show in the link routing step when it fails.
+    private func changeLinkRouting(_ work: @escaping @Sendable () -> String?) {
+        linkRoutingError = nil
+        linkRoutingBusy = true
+        Task {
+            linkRoutingError = await Task.detached(operation: work).value
+            linkRoutingBusy = false
+            refresh()
+        }
     }
 
     func allowAccessibility() {
@@ -175,7 +259,41 @@ struct SetupView: View {
                     : "Turn on Switch to Desktop \(describe(state.missingShortcuts)) in Keyboard Shortcuts › Mission Control.") {
             if !state.missingShortcuts.isEmpty { Button("Open Settings", action: setup.openShortcutSettings) }
         }
+        if state.instances.count >= 2 { linkRoutingStep }
     }
+
+    private var linkRoutingStep: some View {
+        let keeperOff = state.agent != .on
+        let status: StepStatus = switch state.linkRouting {
+        case .off: .todo(5)
+        case .on: keeperOff ? .attention : .done
+        case .needsAutomation, .denied, .failed: .attention
+        }
+        let next: String? = switch state.linkRouting {
+        case .off: "Needs permission to send links to Claude."
+        case .on: keeperOff ? "Turn on the background keeper too, or Claude takes the links back the next time it launches." : nil
+        case .needsAutomation(instanceRunning: true): "Allow Claude Keeper to send links to Claude."
+        case .needsAutomation(instanceRunning: false): "Open a Claude instance to finish."
+        case .denied: "macOS blocks Claude Keeper from sending links; allow it in Privacy & Security › Automation."
+        case .failed(let code): "Could not check the permission to send links to Claude (error \(code))."
+        }
+        let detail = ["Opens each claude:// link in the Claude where it belongs: sign-in links in the one you were just using, others in the one you pick.",
+                      setup.linkRoutingError ?? next].compactMap { $0 }.joined(separator: " ")
+        return StepRow(status: status, title: "Link routing", detail: detail) { linkRoutingButton.disabled(setup.linkRoutingBusy) }
+    }
+
+    @ViewBuilder private var linkRoutingButton: some View {
+        switch state.linkRouting {
+        case .off: Button("Turn On", action: setup.turnOnLinkRouting).buttonStyle(.borderedProminent)
+        case .needsAutomation(instanceRunning: true):
+            VStack(alignment: .trailing) { Button("Allow…", action: setup.allowLinkRouting).buttonStyle(.borderedProminent); turnOffButton }
+        case .needsAutomation(instanceRunning: false): turnOffButton
+        case .denied: VStack(alignment: .trailing) { Button("Open Automation Settings", action: setup.openAutomationSettings); turnOffButton }
+        case .on, .failed: turnOffButton
+        }
+    }
+
+    private var turnOffButton: some View { Button("Turn Off", action: setup.turnOffLinkRouting) }
 
     private var footer: some View {
         HStack {
@@ -196,9 +314,10 @@ struct SetupView: View {
     }
 }
 
+enum StepStatus: Equatable { case done, attention, todo(Int) }
+
 struct StepRow<Accessory: View>: View {
-    enum Status: Equatable { case done, attention, todo(Int) }
-    var status: Status
+    var status: StepStatus
     var title: String
     var detail: String
     @ViewBuilder var accessory: () -> Accessory
@@ -229,10 +348,6 @@ struct StepRow<Accessory: View>: View {
 }
 
 // MARK: - Window
-
-final class SetupAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-}
 
 @MainActor
 func makeSetupWindow(_ setup: Setup) -> NSWindow {
@@ -278,18 +393,14 @@ func makeMainMenu() -> NSMenu {
 }
 
 @MainActor
-func runSetupWindow() -> Never {
+func showSetupWindow() {
     let app = NSApplication.shared
-    let delegate = SetupAppDelegate()
-    app.delegate = delegate
     app.setActivationPolicy(.regular)
     app.mainMenu = makeMainMenu()
     let window = makeSetupWindow(Setup(.current(), live: true))
     window.center()
     window.makeKeyAndOrderFront(nil)
     app.activate(ignoringOtherApps: true)
-    app.run()
-    exit(0)
 }
 
 // MARK: - Snapshots
@@ -301,7 +412,18 @@ extension SetupState {
         ("done", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .on, accessibility: true, desktopCount: 3, missingShortcuts: [])),
         ("single-instance", SetupState(location: .applications, instances: ["Claude"], agent: .off, accessibility: false, desktopCount: 1, missingShortcuts: [])),
         ("translocated", SetupState(location: .translocated, instances: ["Claude", "Claude (Personal)"], agent: .off, accessibility: false, desktopCount: 3, missingShortcuts: [2, 3])),
+        ("link-routing-off", linkRouting(.off)),
+        ("link-routing-on", linkRouting(.on)),
+        ("link-routing-keeper-off", linkRouting(.on, agent: .off)),
+        ("link-routing-needs-automation", linkRouting(.needsAutomation(instanceRunning: true))),
+        ("link-routing-no-instance", linkRouting(.needsAutomation(instanceRunning: false))),
+        ("link-routing-denied", linkRouting(.denied)),
     ]
+
+    private static func linkRouting(_ routing: LinkRouting, agent: Agent = .on) -> SetupState {
+        SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: agent, accessibility: true, desktopCount: 3,
+                   missingShortcuts: [], linkRouting: routing)
+    }
 }
 
 /// Renders the setup window in each example state to `<dir>/<name>-<appearance>.png`, without showing it.
@@ -328,3 +450,4 @@ func renderSnapshots(to dir: URL) {
 
 #Preview("Fresh") { SetupView(setup: Setup(SetupState.examples[0].state, live: false)) }
 #Preview("Done") { SetupView(setup: Setup(SetupState.examples[2].state, live: false)) }
+#Preview("Link routing denied") { SetupView(setup: Setup(SetupState.examples.first { $0.name == "link-routing-denied" }!.state, live: false)) }

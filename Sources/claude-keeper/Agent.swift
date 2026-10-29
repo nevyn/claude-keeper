@@ -55,6 +55,7 @@ func installAgent() throws {
 /// Called by the agent once its app is in the Trash. Background Task Management may already have dropped its records
 /// by then (unregister fails with "record not found") while launchd keeps the job loaded, retrying a spawn that fails.
 func unregisterAfterTrash() -> Never {
+    handSchemeBack()
     do { try agentService.unregister() } catch { log("Background Task Management could not unregister the agent (\(error)); booting out its launchd job") }
     launchctl("bootout", "gui/\(getuid())/\(agentLabel)")  // ends this process too
     exit(0)
@@ -62,7 +63,32 @@ func unregisterAfterTrash() -> Never {
 
 func uninstallAgent() throws {
     try agentService.unregister()
+    handSchemeBack()  // after unregistering: while the agent runs, it claims the scheme again
     if LegacyAgent.installed { try LegacyAgent.remove() }
+}
+
+/// Makes `Claude.app` the `claude://` handler again if this bundle, or any bundle in the Trash, is the handler. Logs a
+/// failure instead of throwing, so that uninstalling goes on. Keeps `linkRoutingFlag`: it is the user's preference,
+/// and the agent claims the scheme again when the keeper is turned on again.
+func handSchemeBack() {
+    guard let handler = schemeHandler(), isSameBundle(handler, Bundle.main.bundleURL) || handler.path.contains("/.Trash/") else { return }
+    do { try setSchemeHandler(URL(fileURLWithPath: claudeBundle)); log("handed \(linkScheme):// links back from \(handler.path) to \(claudeBundle)") }
+    catch { log("error: could not hand \(linkScheme):// links back from \(handler.path) to \(claudeBundle): \(error)") }
+}
+
+/// Whether two file URLs name the same bundle, ignoring trailing slashes, `..` and symlinks.
+func isSameBundle(_ a: URL, _ b: URL) -> Bool {
+    a.standardizedFileURL.resolvingSymlinksInPath().path == b.standardizedFileURL.resolvingSymlinksInPath().path
+}
+
+enum SchemeError: Error, CustomStringConvertible {
+    case didNotTake(target: String, handler: String?)
+
+    var description: String {
+        switch self {
+        case .didNotTake(let target, let handler): "LaunchServices accepted the change, but the \(linkScheme):// handler is \(handler ?? "none"), not \(target)"
+        }
+    }
 }
 
 /// Sends the agent's output to the log, since a plist inside the bundle cannot name a path in the user's home.

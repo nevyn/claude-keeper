@@ -23,3 +23,15 @@ quit it, and that the keeper must relaunch.
 
 **Placement**: the desktop (Space ID and its 1-based number) where an instance's largest window
 was last seen.
+
+**Link**: a `claude://` URL. Avoid "deep link" and "universal link"; Claude has no universal links.
+
+**Router**: the role in which Claude Keeper receives a link from LaunchServices and forwards it to
+an instance. Avoid "interceptor" and "proxy".
+
+**Sign-in link**: a link that completes a flow that the user started in one instance (magic link,
+SSO callback, connector sign-in callback, `claude://login/`).
+
+**Last-active instance**: the instance that was most recently frontmost, as the agent recorded it.
+
+**Chooser**: the panel in which the user picks the instance that opens a link.

@@ -1,12 +1,16 @@
 # The app and its agent
 
-`Claude Keeper.app` has one executable, `Contents/MacOS/ClaudeKeeper`, with two roles:
+`Claude Keeper.app` has one executable, `Contents/MacOS/ClaudeKeeper`, with three roles:
 
 * Opened from Finder (no arguments), it shows the setup window. It never runs in the background.
 * Started by launchd as `ClaudeKeeper run`, it is the agent. launchd starts it directly, not
-  through LaunchServices, so it has no Dock icon or menu.
+  through LaunchServices, so it has no Dock icon or menu. Besides relaunching instances, it records
+  the last-active instance and, while link routing is on, keeps the `claude://` scheme; see
+  [link-routing.md](link-routing.md).
+* Launched by LaunchServices for a `claude://` link, it is the router: it forwards the link to an
+  instance and quits. See [link-routing.md](link-routing.md).
 
-Both roles have the same code identity (`dev.nevyn.ClaudeKeeper`, team M4Q2TE45WT), so the
+All roles have the same code identity (`dev.nevyn.ClaudeKeeper`, team M4Q2TE45WT), so the
 Accessibility grant that the setup window asks for applies to the agent, and the window's
 `AXIsProcessTrusted()` check reports the agent's grant.
 
