@@ -4,7 +4,9 @@
 
 * Opened from Finder (no arguments), it shows the setup window. It never runs in the background.
 * Started by launchd as `ClaudeKeeper run`, it is the agent. launchd starts it directly, not
-  through LaunchServices, so it has no Dock icon or menu.
+  through LaunchServices, so it has no Dock icon or menu. Besides relaunching instances, it records
+  the last-active instance and, while link routing is on, keeps the `claude://` scheme; see
+  [link-routing.md](link-routing.md).
 * Launched by LaunchServices for a `claude://` link, it is the router: it forwards the link to an
   instance and quits. See [link-routing.md](link-routing.md).
 

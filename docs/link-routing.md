@@ -63,6 +63,9 @@ again, so links clicked in the second after a launch still go to Claude directly
 routing off, turning the keeper off, or moving the app to the Trash hands the scheme back to
 `Claude.app`.
 
+Turning the keeper off keeps `link-routing-on`, so turning it on again resumes link routing. While
+the keeper is off, nothing claims the scheme back, so the setup window asks for the keeper too.
+
 Claude decides at launch whether it owns the scheme. It then finishes connector sign-ins with a
 `claude://` callback, which the router forwards. Google sign-in asks at sign-in time and uses
 ASWebAuthenticationSession when it does not own the scheme; that callback never leaves the instance.
