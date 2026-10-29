@@ -28,8 +28,10 @@ this and has no way to tell whether anyone donated. Both asks open `donationURL`
    user's windows, goes behind them as soon as the user clicks one, and never takes their
    keystrokes. A click on a button acts at once, without activating the app.
 
-Setup counts as completed only when every step is done, including the optional desktop placement
-steps. A user who skips those is never asked.
+The footer line appears once every setup step is done. The reminder's 14 days count from when setup
+was first seen done: by the setup window, or by a running agent, whichever comes first. A running
+agent counts because the keeper only runs once the user turned it on, so users who skip the optional
+desktop steps, or who upgraded through Sparkle and never reopen the window, are asked too.
 
 ## State
 
@@ -40,9 +42,8 @@ Times are seconds since 1970; a missing key means that it has not happened.
 {"setupCompleted": 1792000000, "reminderShown": 1793209600, "donateClicked": 1793209630}
 ```
 
-* `setupCompleted`: the setup window writes it the first time that it sees setup done, and never
-  overwrites it. Setup that was completed before this version has no completion time until the
-  user opens the setup window again.
+* `setupCompleted`: the setup window writes it the first time that it sees setup done, and an agent
+  running from the app writes it on its first tick if it is still missing. Nothing overwrites it.
 * `reminderShown`: the `donation-reminder` role writes it as soon as its panel is on screen, so the
   reminder shows at most once, even if the user never answers it.
 * `donateClicked`: the first click on Donate…, in either place.

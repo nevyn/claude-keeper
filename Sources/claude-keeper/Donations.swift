@@ -10,7 +10,7 @@ let donationStateURL = URL(fileURLWithPath: stateDir + "/donation.json")
 
 /// Contents of `donation.json`. Times are in seconds since 1970; nil means that it has not happened.
 struct DonationState: Codable, Equatable {
-    /// When the setup window first saw setup done. Nothing overwrites it.
+    /// When setup was first seen done: by the setup window, or by an agent running from the app. Nothing overwrites it.
     var setupCompleted: Double?
     /// When the `donation-reminder` role put its window on screen.
     var reminderShown: Double?

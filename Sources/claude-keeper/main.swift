@@ -478,6 +478,10 @@ final class Keeper {
     /// `donation.json` that it showed the reminder, which the agent reads once a minute; until then, and when the role
     /// never got its window on screen, the agent waits `donationReminderRetry` before it launches the role again.
     func remindAboutDonationIfDue(now: Double) {
+        if ownBundle != nil && donation.setupCompleted == nil {  // a running agent means setup is done, also for users who never reopen the window
+            updateDonationState { $0.setupCompleted = $0.setupCompleted ?? now }
+            donation = load(DonationState.self, from: donationStateURL) ?? donation
+        }
         guard let own = ownBundle, now >= donationReminderRetryAfter, donationReminderDue(now: now, state: donation) else { return }
         donationReminderRetryAfter = now + donationReminderRetry
         if launchRole("donation-reminder", of: own) { log("launched the donation reminder") }
