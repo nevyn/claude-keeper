@@ -39,10 +39,14 @@ A sign-in link completes a flow that the user started in an instance moments ear
 last-active instance is the one that started it. Opening a magic link in the other instance
 would sign that instance in to the wrong account, so sign-in links never go to more than one instance.
 
-The **last-active instance** is the instance that was most recently frontmost. The agent samples
-`NSWorkspace.frontmostApplication` every tick (it stays current without a run loop) and writes
-`last-active.json` (instance name, pid, time) to the state directory when it changes. Window
-z-order cannot replace this: it only covers the current desktop.
+The **last-active instance** is the instance that was most recently frontmost. Every tick, the
+agent takes the owner of the frontmost on-screen normal window (`CGWindowListCopyWindowInfo`) and
+writes `last-active.json` (instance name, pid, time) to the state directory when that is a
+different instance. The frontmost app's windows are always on the current desktop, so sampling
+every second also tracks instances on other desktops; the router cannot read window order at
+click time instead, because the instance that started a sign-in may be on another desktop by then.
+`NSWorkspace.frontmostApplication` never changes in the agent, because launchd starts it outside
+LaunchServices.
 
 The **chooser** is a panel at the mouse pointer that lists the running instances with their
 icons. It highlights the last-active instance, or the first one when there is none. Return opens

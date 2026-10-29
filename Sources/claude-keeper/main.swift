@@ -428,7 +428,7 @@ final class Keeper {
 
     /// Saves the frontmost instance to `lastActiveURL` when it changes, for the router; see docs/link-routing.md.
     func recordLastActive(_ running: [String: Int32], now: Double) {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+        guard let pid = frontmostWindowOwner(),
               let name = running.first(where: { $0.value == pid })?.key,
               lastActive?.name != name || lastActive?.pid != pid else { return }
         lastActive = LastActive(name: name, pid: pid, ts: now)
@@ -457,6 +457,13 @@ final class Keeper {
             schemeRetryAfter = now + 60
             log("error: could not make \(target.path) the \(linkScheme):// handler instead of \(from) (trying again in 60 s): \(error)")
         }
+    }
+
+    /// The pid that owns the frontmost normal window. `NSWorkspace.frontmostApplication` never changes in the agent,
+    /// which launchd starts outside LaunchServices.
+    func frontmostWindowOwner() -> Int32? {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        return windows.first { $0[kCGWindowLayer as String] as? Int == 0 }?[kCGWindowOwnerPID as String] as? Int32
     }
 
     /// Quits each instance the way Cmd-Q does, falling back to SIGTERM.
