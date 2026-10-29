@@ -801,7 +801,7 @@ case "agent":
 case "snapshot":
     guard let dir = CommandLine.arguments.dropFirst(2).first else { print("usage: claude-keeper snapshot <directory>"); exit(2) }
     let url = URL(fileURLWithPath: dir)
-    MainActor.assumeIsolated { renderSnapshots(to: url); renderChooserSnapshots(to: url); renderDonationReminderSnapshots(to: url) }
+    MainActor.assumeIsolated { renderSnapshots(to: url); renderChooserSnapshots(to: url); renderDonationReminderSnapshots(to: url); renderAddInstanceSnapshots(to: url) }
 case "help", "--help", "-h":
     print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | check-for-updates | donation-reminder | version]; with no arguments, opens the setup window")
 default: MainActor.assumeIsolated { runApp() }
