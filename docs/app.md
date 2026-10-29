@@ -45,5 +45,13 @@ So the agent checks its bundle every second (`BundleWatch`):
   covers the case where Background Task Management dropped the record first.
 * The bundle moved elsewhere: it keeps running and logs that the app should be opened in its new
   place.
-* Accessibility was granted after it started: it exits so that launchd restarts it, because a
-  process caches its `CGPreflightPostEventAccess()` answer.
+
+## Picking up the Accessibility grant
+
+A running agent cannot see an Accessibility grant made after it started. Measured on macOS 27:
+both `CGPreflightPostEventAccess()` and `AXIsProcessTrusted()` kept returning false in the agent,
+while the setup window's `AXIsProcessTrusted()` turned true as soon as the switch was flipped.
+
+So the setup window restarts the agent (`launchctl kickstart -k`) when it sees the grant while the
+agent is on, including once when it opens with the grant already in place. Opening Claude Keeper
+therefore also fixes an agent that started before the grant.

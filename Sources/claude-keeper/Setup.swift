@@ -41,6 +41,7 @@ final class Setup: ObservableObject {
     @Published private(set) var state: SetupState
     @Published var error: String?
     private var timer: Timer?
+    private var agentHasGrant = false
 
     init(_ state: SetupState, live: Bool) {
         self.state = state
@@ -48,14 +49,21 @@ final class Setup: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
+        refresh()
     }
 
     func refresh() {
         let next = SetupState.current()
         if next != state { state = next }
+        if !next.accessibility { agentHasGrant = false }
+        if next.accessibility && next.agent == .on && !agentHasGrant {
+            restartAgent()  // the agent cannot see a grant made after it started; see docs/app.md
+            agentHasGrant = true
+        }
     }
 
     func turnOn() {
+        agentHasGrant = state.accessibility
         do { try installAgent(); error = nil } catch { self.error = "Could not turn on the keeper: \(error.localizedDescription)" }
         if agentService.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
         refresh()

@@ -35,6 +35,18 @@ func launchctl(_ arguments: String...) -> Int32 {
     return p.terminationStatus
 }
 
+/// Restarts the running agent, for example so that it picks up an Accessibility grant: a running agent keeps the
+/// answer that it got at launch. Does nothing if the agent is not running. Returns at once: launchd waits up to 10 s
+/// before it starts an agent that started less than 10 s ago.
+func restartAgent() {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    p.arguments = ["kickstart", "-k", "gui/\(getuid())/\(agentLabel)"]
+    p.standardOutput = FileHandle.nullDevice
+    p.standardError = FileHandle.nullDevice
+    try? p.run()
+}
+
 func installAgent() throws {
     if LegacyAgent.installed { try LegacyAgent.remove() }
     try agentService.register()
@@ -70,7 +82,6 @@ final class BundleWatch {
     private let executable: String?
     private let inode: Int?
     private let bookmark: Data?
-    private let grantedAtLaunch = CGPreflightPostEventAccess()
     private var missingSince: Date?
     private var reportedMove = false
 
@@ -95,7 +106,6 @@ final class BundleWatch {
         }
         missingSince = nil
         if current != inode { return .restart("a new version replaced \(Bundle.main.bundlePath)") }
-        if !grantedAtLaunch && AXIsProcessTrusted() { return .restart("Accessibility was granted") }  // the post-event answer is cached per process
         return .keepRunning
     }
 }
