@@ -311,7 +311,7 @@ enum SwitchError: Error, CustomStringConvertible {
     case noPostEventAccess, desktopGone(Placement), shortcutMissing(Int), didNotSwitch(Int)
     var description: String {
         switch self {
-        case .noPostEventAccess: "no Accessibility grant for \(CommandLine.arguments[0]); add it in System Settings > Privacy & Security > Accessibility"
+        case .noPostEventAccess: "no Accessibility grant for \(Bundle.main.bundleURL.pathExtension == "app" ? "Claude Keeper" : CommandLine.arguments[0]); open Claude Keeper, or add it in System Settings > Privacy & Security > Accessibility"
         case .desktopGone(let p): "desktop \(p.desktop) (space \(p.spaceID)) no longer exists"
         case .shortcutMissing(let n): "shortcut 'Switch to Desktop \(n)' is disabled or unset in System Settings > Keyboard > Keyboard Shortcuts > Mission Control"
         case .didNotSwitch(let n): "posted the 'Switch to Desktop \(n)' shortcut but the active space did not change within 3 s"
@@ -319,20 +319,25 @@ enum SwitchError: Error, CustomStringConvertible {
     }
 }
 
+/// The user's "Switch to Desktop N" shortcut, or nil while it is disabled or unset.
+func desktopShortcut(_ desktop: Int) -> (key: CGKeyCode, flags: CGEventFlags)? {
+    CFPreferencesAppSynchronize("com.apple.symbolichotkeys" as CFString)
+    let hotkeys = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, "com.apple.symbolichotkeys" as CFString) as? [String: Any]
+    guard desktop >= 1, desktop <= 16, let entry = hotkeys?[String(117 + desktop)] as? [String: Any], (entry["enabled"] as? Int) == 1,
+          let params = (entry["value"] as? [String: Any])?["parameters"] as? [Int], params.count == 3, params[1] != 65535
+    else { return nil }
+    return (CGKeyCode(params[1]), CGEventFlags(rawValue: UInt64(params[2])))
+}
+
 /// Switches to the desktop by posting the user's own "Switch to Desktop N" shortcut, then waits until it is active.
 func switchTo(_ target: Placement) throws {
     if CGSGetActiveSpace(cgs) == target.spaceID { return }
     guard CGPreflightPostEventAccess() else { throw SwitchError.noPostEventAccess }
     guard let desktop = desktops().firstIndex(of: target.spaceID).map({ $0 + 1 }) else { throw SwitchError.desktopGone(target) }
-    CFPreferencesAppSynchronize("com.apple.symbolichotkeys" as CFString)
-    let hotkeys = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, "com.apple.symbolichotkeys" as CFString) as? [String: Any]
-    guard desktop <= 16, let entry = hotkeys?[String(117 + desktop)] as? [String: Any], (entry["enabled"] as? Int) == 1,
-          let params = (entry["value"] as? [String: Any])?["parameters"] as? [Int], params.count == 3, params[1] != 65535
-    else { throw SwitchError.shortcutMissing(desktop) }
-    let flags = CGEventFlags(rawValue: UInt64(params[2]))
+    guard let shortcut = desktopShortcut(desktop) else { throw SwitchError.shortcutMissing(desktop) }
     for down in [true, false] {
-        let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(params[1]), keyDown: down)
-        event?.flags = flags
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: shortcut.key, keyDown: down)
+        event?.flags = shortcut.flags
         event?.post(tap: .cghidEventTap)
     }
     let deadline = Date() + 3
@@ -374,9 +379,15 @@ final class Keeper {
     func run() -> Never {
         log("claude-keeper \(version) watching \(instances.map { "\($0.name) (\($0.bundlePath))" }.joined(separator: ", "))")
         if CGPreflightPostEventAccess() { log("post-event access granted") }
-        else { _ = CGRequestPostEventAccess(); log("warning: \(SwitchError.noPostEventAccess); instances will relaunch on the current desktop") }
+        else { log("warning: \(SwitchError.noPostEventAccess); instances will relaunch on the current desktop") }
+        let watch = BundleWatch()
         while true {
             autoreleasepool {  // no run loop drains the pool, so each tick's autoreleased objects would live forever
+                switch watch.check(now: Date()) {
+                case .keepRunning: break
+                case .restart(let why): log("restarting: \(why)"); exit(0)  // launchd's KeepAlive starts the bundle's current executable
+                case .uninstall(let why): log("unregistering: \(why)"); unregisterAfterTrash()
+                }
                 if tick % 60 == 0 { instances = discoverInstances() }
                 let now = Date().timeIntervalSince1970
                 let running = runningInstances(instances)
@@ -635,9 +646,24 @@ case "switch":
 case "restore":
     let keeper = Keeper(), names = Array(CommandLine.arguments.dropFirst(2))
     keeper.relaunch(names.isEmpty ? keeper.instances.map(\.name) : names)
-case "install", "uninstall":
-    do { try CommandLine.arguments[1] == "install" ? install() : uninstall() } catch { print("error: \(error)"); exit(1) }
 case "version", "--version": print(version)
-case nil, "run": Keeper().run()
-default: print("usage: claude-keeper [run | install | uninstall | status | selftest | switch <n> | restore [instance...] | version]"); exit(2)
+case "run":
+    if getppid() == 1 { redirectOutputToLog() }
+    Keeper().run()
+case "agent":
+    do {
+        switch CommandLine.arguments.dropFirst(2).first {
+        case "on": try installAgent()
+        case "off": try uninstallAgent()
+        case nil, "status": break
+        default: print("usage: claude-keeper agent [on | off | status]"); exit(2)
+        }
+    } catch { print("error: \(error)"); exit(1) }
+    print("agent: \(SetupState.current().agent)\(LegacyAgent.installed ? ", v0.1 agent still installed" : "")")
+case "snapshot":
+    guard let dir = CommandLine.arguments.dropFirst(2).first else { print("usage: claude-keeper snapshot <directory>"); exit(2) }
+    MainActor.assumeIsolated { renderSnapshots(to: URL(fileURLWithPath: dir)) }
+case "help", "--help", "-h":
+    print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | version]; with no arguments, opens the setup window")
+default: MainActor.assumeIsolated { runSetupWindow() }
 }

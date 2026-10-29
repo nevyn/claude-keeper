@@ -1,5 +1,8 @@
 # Glossary
 
+**Claude Keeper**: the app. Its executable is both the **setup window** (opened from Finder) and
+the **agent** (started by launchd with `run`). Avoid "wizard" and "daemon".
+
 **Instance**: one copy of Claude desktop with its own user-data dir: `/Applications/Claude.app`
 or a Parall copy of it. Not "app" or "window".
 

@@ -1,6 +1,8 @@
-# claude-keeper
+# Claude Keeper
 
-A LaunchAgent that keeps several Claude desktop instances running through auto-updates, and
+<img src="art/icon-readme.png" width="128" align="right" alt="">
+
+A Mac app that keeps several Claude desktop instances running through auto-updates, and
 relaunches each on the macOS desktop (Space) where it was last seen. It is for people who run
 a second copy of Claude with [Parall](https://parall.app), for example one signed in to a work
 account and one to a personal account.
@@ -21,27 +23,18 @@ only the unprefixed Claude.
 Requirements: macOS 13 or later, Claude in `/Applications`, and Parall copies of it in
 `/Applications` or `~/Applications`.
 
-```sh
-curl -fLO https://github.com/nevyn/claude-keeper/releases/latest/download/claude-keeper.zip
-unzip claude-keeper.zip
-./claude-keeper install
-```
+1. Download `Claude-Keeper.zip` from the [latest release](https://github.com/nevyn/claude-keeper/releases/latest).
+2. Drag Claude Keeper into your Applications folder, and open it.
+3. Follow the steps in its window: turn on the background keeper, allow Accessibility, and turn
+   on "Switch to Desktop N" for your desktops. The last two are optional; without them,
+   instances relaunch on the current desktop.
 
-`install` copies the binary to `~/Library/Application Support/claude-keeper/claude-keeper` and
-loads the LaunchAgent `dev.nevyn.claude-keeper`, which starts it at login and restarts it if it
-exits. Then:
+The window is only for setup; close it when you are done. The keeper itself is a background
+agent without a window or Dock icon, listed as Claude Keeper in System Settings › General ›
+Login Items, where you can also pause it.
 
-1. Grant `~/Library/Application Support/claude-keeper/claude-keeper` Accessibility in System
-   Settings > Privacy & Security > Accessibility. It needs that grant to post the desktop
-   shortcuts. Without it, instances still relaunch, but on the current desktop.
-2. Enable "Switch to Desktop N" for every desktop involved, in System Settings > Keyboard >
-   Keyboard Shortcuts > Mission Control. Any key combination works, since the keeper reads it.
-
-To upgrade, run the same three commands with a newer release. Releases are signed with the same
-Developer ID and notarized, so the Accessibility grant stays valid.
-
-To uninstall, run `~/Library/Application\ Support/claude-keeper/claude-keeper uninstall`. It
-leaves the state files and the log in place.
+To upgrade, drag a newer Claude Keeper over the old one. To uninstall, drag Claude Keeper to the
+Trash. The keeper notices either within seconds; see [docs/app.md](docs/app.md) for how.
 
 ## What it does
 
@@ -82,12 +75,19 @@ update does not forget what it quit.
 
 ## Commands
 
+The app's executable doubles as a command-line tool:
+
+```sh
+alias claude-keeper="/Applications/Claude\ Keeper.app/Contents/MacOS/ClaudeKeeper"
+```
+
 * `claude-keeper status`: instances, pids, current and saved desktops, pending update attempts,
   idle time, and per-session activity (takes 5 seconds)
+* `claude-keeper agent [on | off]`: what the setup window's Turn On and Uninstall buttons do
 * `claude-keeper restore [instance...]`: relaunch instances that are not running on their
   saved desktops
 * `claude-keeper switch <n>`: switch to desktop n the way the keeper does
-* `claude-keeper install`, `claude-keeper uninstall`, `claude-keeper selftest`, `claude-keeper version`
+* `claude-keeper selftest`, `claude-keeper version`
 
 The log is `~/Library/Logs/claude-keeper.log`; state lives in
 `~/Library/Application Support/claude-keeper/`.
@@ -95,15 +95,12 @@ The log is `~/Library/Logs/claude-keeper.log`; state lives in
 ## Building from source
 
 ```sh
-swift build -c release
-.build/release/claude-keeper selftest
-.build/release/claude-keeper install
+scripts/build-app.sh
 ```
 
-A local build is signed ad hoc, and an ad-hoc signature changes with every build, so each
-rebuild needs a new Accessibility grant. Sign it with a certificate of your own to avoid that:
-`codesign -f -s "Developer ID Application: …" -i dev.nevyn.claude-keeper .build/release/claude-keeper`.
-Maintainers publish releases with `./release.sh`, described in [docs/releasing.md](docs/releasing.md).
+That builds `dist/Claude Keeper.app`, signed ad hoc. An ad-hoc signature changes with every build,
+so each rebuild needs a new Accessibility grant; set `SIGN_IDENTITY` to a Developer ID to avoid
+that. Maintainers publish releases with `./release.sh`, described in [docs/releasing.md](docs/releasing.md).
 
 ## Caveats
 

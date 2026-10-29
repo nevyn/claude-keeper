@@ -1,7 +1,7 @@
 # Releasing
 
-`./release.sh` publishes a GitHub release with `claude-keeper.zip` (a universal binary) and its
-SHA-256. Run it from a clean `main` that matches `origin/main`.
+`./release.sh` publishes a GitHub release with `Claude-Keeper.zip` (the app, universal and
+notarized) and its SHA-256. Run it from a clean `main` that matches `origin/main`.
 
 * `./release.sh` releases the version in `Sources/claude-keeper/Version.swift`, or the next
   patch version if that one is already tagged.
@@ -12,13 +12,13 @@ SHA-256. Run it from a clean `main` that matches `origin/main`.
 
 The notes default to the commit subjects since the previous tag; `NOTES=file` overrides them.
 
-The script commits the version bump, builds with `swift build -c release --arch arm64 --arch x86_64`,
-runs `selftest`, signs with hardened runtime and a timestamp, notarizes, tags, pushes `main` and
-the tag, creates the release, and finally downloads the zip and compares it with the local one.
+The script commits the version bump, builds the app with `scripts/build-app.sh`, runs `selftest`,
+notarizes, staples, checks it with `spctl`, tags, pushes `main` and the tag, creates the release,
+and finally downloads the zip and compares it with the local one.
 
 ## Signing and notarization
 
-The binary is signed with identifier `dev.nevyn.claude-keeper` and the Developer ID in
+The app is signed with identifier `dev.nevyn.ClaudeKeeper` and the Developer ID in
 `SIGN_IDENTITY` (default: Nevyn's personal team, M4Q2TE45WT). TCC keys an Accessibility grant on
 the designated requirement, which is that identifier plus the team, so upgrading keeps the grant.
 Changing either one makes every user grant Accessibility again.
@@ -30,6 +30,3 @@ while the screen is locked; one in the data-protection keychain does not. To cre
 ```sh
 xcrun notarytool store-credentials <profile> --apple-id <apple-id> --team-id <team> --keychain ~/Library/Keychains/login.keychain-db
 ```
-
-A bare Mach-O cannot be stapled, so Gatekeeper checks the notarization online the first time
-a quarantined copy runs.
