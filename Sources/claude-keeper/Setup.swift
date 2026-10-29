@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import Sparkle
 import SwiftUI
 
 /// Everything that the setup window shows. `SetupState.current()` reads it from the system; previews and
@@ -361,9 +362,10 @@ func makeSetupWindow(_ setup: Setup) -> NSWindow {
     return window
 }
 
-/// Without a nib, the app has no main menu, and so no Cmd-Q, Cmd-W or Cmd-H.
+/// Without a nib, the app has no main menu, and so no Cmd-Q, Cmd-W or Cmd-H. With `updater`, the application menu has
+/// "Check for Updates…", which Sparkle enables while it can check.
 @MainActor
-func makeMainMenu() -> NSMenu {
+func makeMainMenu(updater: SPUStandardUpdaterController?) -> NSMenu {
     func menu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = NSMenu(title: title)
@@ -375,9 +377,15 @@ func makeMainMenu() -> NSMenu {
         item.keyEquivalentModifierMask = modifiers
         return item
     }
+    let checkForUpdates = updater.map { updater in
+        let item = item("Check for Updates…", #selector(SPUStandardUpdaterController.checkForUpdates(_:)), "")
+        item.target = updater
+        return item
+    }
     let main = NSMenu()
     main.addItem(menu("Claude Keeper", [
         item("About Claude Keeper", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+    ] + [checkForUpdates].compactMap { $0 } + [
         .separator(),
         item("Hide Claude Keeper", #selector(NSApplication.hide(_:)), "h"),
         item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
@@ -396,7 +404,7 @@ func makeMainMenu() -> NSMenu {
 func showSetupWindow() {
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
-    app.mainMenu = makeMainMenu()
+    app.mainMenu = makeMainMenu(updater: setupUpdater)
     let window = makeSetupWindow(Setup(.current(), live: true))
     window.center()
     window.makeKeyAndOrderFront(nil)

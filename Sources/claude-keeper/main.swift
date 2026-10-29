@@ -378,6 +378,8 @@ final class Keeper {
     var tick = 0
     let ownBundle: URL? = Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main.bundleURL : nil
     var schemeRetryAfter = 0.0
+    let started = Date().timeIntervalSince1970
+    var lastUpdateCheck = load(LastUpdateCheck.self, from: lastUpdateCheckURL)
 
     func run() -> Never {
         log("claude-keeper \(version) watching \(instances.map { "\($0.name) (\($0.bundlePath))" }.joined(separator: ", "))")
@@ -397,6 +399,7 @@ final class Keeper {
                 let running = runningInstances(instances)
                 recordLastActive(running, now: now)
                 keepScheme(now: now)
+                checkForUpdatesIfDue(now: now)
                 if tick % 5 == 0 { activity.sample(running, now: now); recordPlacements(running) }
                 let observation = Observation(
                     running: running,
@@ -457,6 +460,15 @@ final class Keeper {
             schemeRetryAfter = now + 60
             log("error: could not make \(target.path) the \(linkScheme):// handler instead of \(from) (trying again in 60 s): \(error)")
         }
+    }
+
+    /// Launches the `check-for-updates` role once a day; see docs/updates.md. Only an agent in an app bundle has an
+    /// app that Sparkle can update.
+    func checkForUpdatesIfDue(now: Double) {
+        guard let own = ownBundle, updateCheckDue(now: now, started: started, last: lastUpdateCheck?.ts) else { return }
+        lastUpdateCheck = LastUpdateCheck(ts: now)
+        save(lastUpdateCheck, to: lastUpdateCheckURL)
+        launchUpdateCheck(own)
     }
 
     /// The pid that owns the frontmost normal window. `NSWorkspace.frontmostApplication` never changes in the agent,
@@ -653,6 +665,7 @@ func selftest() -> Int32 {
         else { failures += 1; print("FAIL \(label): got \(notes)") }
     }
     failures += linkSelftest()
+    failures += updateSelftest()
     return failures == 0 ? 0 : 1
 }
 
@@ -697,6 +710,7 @@ case "restore":
     let keeper = Keeper(), names = Array(CommandLine.arguments.dropFirst(2))
     keeper.relaunch(names.isEmpty ? keeper.instances.map(\.name) : names)
 case "version", "--version": print(version)
+case "check-for-updates": MainActor.assumeIsolated { runUpdateCheck() }
 case "run":
     if getppid() == 1 { redirectOutputToLog() }
     Keeper().run()
@@ -714,6 +728,6 @@ case "snapshot":
     guard let dir = CommandLine.arguments.dropFirst(2).first else { print("usage: claude-keeper snapshot <directory>"); exit(2) }
     MainActor.assumeIsolated { renderSnapshots(to: URL(fileURLWithPath: dir)); renderChooserSnapshots(to: URL(fileURLWithPath: dir)) }
 case "help", "--help", "-h":
-    print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | version]; with no arguments, opens the setup window")
+    print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | check-for-updates | version]; with no arguments, opens the setup window")
 default: MainActor.assumeIsolated { runApp() }
 }
