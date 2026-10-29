@@ -29,6 +29,8 @@ Requirements: macOS 13 or later, Claude in `/Applications`, and Parall copies of
    on "Switch to Desktop N" for your desktops. The last two are optional; without them,
    instances relaunch on the current desktop.
 
+Claude Keeper is free. If it keeps your Claudes running, you can chip in on [Ko-fi](https://ko-fi.com/nevynjpg).
+
 The window is only for setup; close it when you are done. The keeper itself is a background
 agent without a window or Dock icon, listed as Claude Keeper in System Settings › General ›
 Login Items, where you can also pause it.
