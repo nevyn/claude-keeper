@@ -16,6 +16,7 @@ func runApp() -> Never {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchedForLink = false
     private var finishedLaunching = false
+    private var linksDuringLaunch: [URL] = []  // a window ordered in before launch finishes lands on no Space
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleGetURL(_:reply:)),
@@ -25,7 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         finishedLaunching = true
         if launchedForLink {
-            MainActor.assumeIsolated { Router.shared.becomeRouterProcess() }
+            MainActor.assumeIsolated {
+                for url in linksDuringLaunch { Router.shared.open(url) }
+                Router.shared.becomeRouterProcess()
+            }
         } else {
             MainActor.assumeIsolated { showSetupWindow() }
         }
@@ -41,9 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !finishedLaunching && !launchedForLink {
             launchedForLink = true
-            NSApp.setActivationPolicy(.accessory)  // before Router.open can activate the app for the chooser
+            NSApp.setActivationPolicy(.accessory)
         }
-        MainActor.assumeIsolated { Router.shared.open(url) }
+        if finishedLaunching { MainActor.assumeIsolated { Router.shared.open(url) } } else { linksDuringLaunch.append(url) }
     }
 }
 

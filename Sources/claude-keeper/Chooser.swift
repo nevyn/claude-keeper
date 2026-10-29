@@ -13,7 +13,7 @@ enum Chooser {
     /// The panel lists `instances` in the given order and opens at the mouse pointer with the row named
     /// `preselected` highlighted, or the first row when `preselected` is nil or not listed. Return opens the
     /// highlighted row, Up and Down move the highlight, 1-9 pick a row directly, and clicking a row picks it.
-    /// This app is activated while the panel is up, so that the panel gets key events.
+    /// The panel takes key events without activating this app, like Spotlight.
     ///
     /// When a chooser is already up, this one waits until that one has been answered: a second panel would take key
     /// status from the first, which counts as a click outside and drops the first link.
@@ -31,8 +31,8 @@ enum Chooser {
             let mouse = NSEvent.mouseLocation
             let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
             panel.setFrame(chooserFrame(size: panel.frame.size, at: mouse, in: screen?.visibleFrame), display: false)
-            NSApp.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
+            panel.orderFrontRegardless()
+            panel.makeKey()
         }
         if showing == nil { present() } else { waiting.append(present) }
     }
@@ -129,8 +129,10 @@ final class ChooserPanel: NSPanel {
 
     init(_ model: ChooserModel) {
         self.model = model
-        super.init(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         level = .floating
+        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        hidesOnDeactivate = false  // the app is never active: macOS refuses activation to a router launched in the background
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
