@@ -28,6 +28,8 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>LSUIElement</key>
+	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Claude Keeper forwards each claude:// link to the Claude instance that should open it.</string>
 	<key>CFBundleURLTypes</key>

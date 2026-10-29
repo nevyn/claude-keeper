@@ -285,12 +285,15 @@ struct SetupView: View {
     @ViewBuilder private var linkRoutingButton: some View {
         switch state.linkRouting {
         case .off: Button("Turn On", action: setup.turnOnLinkRouting).buttonStyle(.borderedProminent)
-        case .needsAutomation(instanceRunning: true): Button("Allow…", action: setup.allowLinkRouting).buttonStyle(.borderedProminent)
-        case .needsAutomation(instanceRunning: false): EmptyView()
-        case .denied: Button("Open Automation Settings", action: setup.openAutomationSettings)
-        case .on, .failed: Button("Turn Off", action: setup.turnOffLinkRouting)
+        case .needsAutomation(instanceRunning: true):
+            VStack(alignment: .trailing) { Button("Allow…", action: setup.allowLinkRouting).buttonStyle(.borderedProminent); turnOffButton }
+        case .needsAutomation(instanceRunning: false): turnOffButton
+        case .denied: VStack(alignment: .trailing) { Button("Open Automation Settings", action: setup.openAutomationSettings); turnOffButton }
+        case .on, .failed: turnOffButton
         }
     }
+
+    private var turnOffButton: some View { Button("Turn Off", action: setup.turnOffLinkRouting) }
 
     private var footer: some View {
         HStack {
