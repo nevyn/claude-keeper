@@ -102,9 +102,12 @@ func sendLink(_ url: URL, to pid: Int32) throws {
 
 /// Opens `url` with `Claude.app` through LaunchServices: the behaviour without link routing. Needs no grant, and
 /// launches the default instance if nothing is running.
-func openWithClaude(_ url: URL) {
+/// - Parameter completion: runs once on the main queue after LaunchServices has answered, whether or not it opened
+///   the link; a failure is logged. A router process that quits before then can lose the link.
+func openWithClaude(_ url: URL, then completion: @escaping @MainActor () -> Void = {}) {
     NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: claudeBundle), configuration: NSWorkspace.OpenConfiguration()) { _, error in
         if let error { log("error: could not open \(linkSummary(url)) with \(claudeBundle): \(error)") }
+        DispatchQueue.main.async { completion() }
     }
 }
 

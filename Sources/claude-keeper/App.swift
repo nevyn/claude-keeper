@@ -58,12 +58,46 @@ final class Router {
         quitIfIdle()
     }
 
-    /// Routes `url` (see `route`), shows the chooser when the decision is to ask, and forwards it.
+    /// Routes `url` (see `route`), shows the chooser when the decision is to ask, and forwards it. Opens it with
+    /// `Claude.app` instead when link routing is off or anything on the way fails. Links are independent: each one
+    /// stays pending until it has been forwarded, opened or dropped.
     func open(_ url: URL) {
         pending += 1
-        defer { pending -= 1; quitIfIdle() }
-        log("link \(linkSummary(url)): failing open, the router is not built yet")
-        openWithClaude(url)
+        log("link \(linkSummary(url))")
+        guard linkRoutingOn else { return failOpen(url, "link routing is off") }
+        let instances = discoverInstances(), running = runningInstances(instances)
+        let lastActive = load(LastActive.self, from: lastActiveURL)
+        switch route(LinkKind(url), instances: instances.map(\.name), running: running, lastActive: lastActive) {
+        case .deliver(let name): forward(url, to: name, pid: running[name]!)
+        case .choose: failOpen(url, "the chooser is not built yet")
+        case .failOpen(let reason): failOpen(url, reason)
+        }
+    }
+
+    private func forward(_ url: URL, to name: String, pid: Int32) {
+        if automationStatus(pid: pid, ask: false) == errAEEventNotPermitted {
+            return failOpen(url, "Automation of Claude is denied; open Claude Keeper to see how to allow it")
+        }
+        if #available(macOS 14, *), let target = NSRunningApplication(processIdentifier: pid) { NSApp.yieldActivation(to: target) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try sendLink(url, to: pid) }  // blocks up to 10 s while the Automation prompt is up
+            DispatchQueue.main.async {
+                switch result {
+                case .success: log("forwarded \(linkSummary(url)) to \(name)"); self.finish()
+                case .failure(let error): self.failOpen(url, "could not forward it to \(name): \(error)")
+                }
+            }
+        }
+    }
+
+    private func failOpen(_ url: URL, _ reason: String) {
+        log("opening \(linkSummary(url)) with \(claudeBundle): \(reason)")
+        openWithClaude(url) { self.finish() }
+    }
+
+    private func finish() {
+        pending -= 1
+        quitIfIdle()
     }
 
     private func quitIfIdle() {
