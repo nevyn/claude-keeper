@@ -426,6 +426,18 @@ extension SetupState {
     }
 }
 
+/// Draws `view` at twice its size in points, like a Retina screen. An offscreen window draws at 1x.
+@MainActor
+func retinaSnapshot(of view: NSView) -> NSBitmapImageRep? {
+    let size = view.bounds.size
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2),
+                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+    rep.size = size
+    view.cacheDisplay(in: view.bounds, to: rep)
+    return rep
+}
+
 /// Renders the setup window in each example state to `<dir>/<name>-<appearance>.png`, without showing it.
 @MainActor
 func renderSnapshots(to dir: URL) {
@@ -439,8 +451,7 @@ func renderSnapshots(to dir: URL) {
             let view = window.contentView!
             view.appearance = window.appearance
             view.layoutSubtreeIfNeeded()
-            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
-            view.cacheDisplay(in: view.bounds, to: rep)
+            guard let rep = retinaSnapshot(of: view) else { continue }
             let url = dir.appendingPathComponent("\(name)-\(suffix).png")
             do { try rep.representation(using: .png, properties: [:])!.write(to: url); print(url.path) }
             catch { print("error: could not write \(url.path): \(error)") }

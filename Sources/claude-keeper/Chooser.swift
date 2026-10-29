@@ -223,8 +223,7 @@ func renderChooserSnapshots(to dir: URL) {
             let view = panel.contentView!
             view.appearance = panel.appearance
             view.layoutSubtreeIfNeeded()
-            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
-            view.cacheDisplay(in: view.bounds, to: rep)
+            guard let rep = retinaSnapshot(of: view) else { continue }
             let url = dir.appendingPathComponent("chooser-\(example.name)-\(suffix).png")
             do { try rep.representation(using: .png, properties: [:])!.write(to: url); print(url.path) }
             catch { print("error: could not write \(url.path): \(error)") }
