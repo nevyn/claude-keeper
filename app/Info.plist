@@ -43,6 +43,14 @@
 			</array>
 		</dict>
 	</array>
+	<key>SUFeedURL</key>
+	<string>https://github.com/nevyn/claude-keeper/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>8CnZCnEZfjCReWdCky0Ap8/cndyUtmXlt2N3EUwCN28=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright 2026 Nevyn Bengtsson. MIT License.</string>
 </dict>
