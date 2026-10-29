@@ -5,3 +5,4 @@
 * [glossary.md](glossary.md): the terms that the code and docs use
 * [releasing.md](releasing.md): publishing a signed, notarized release
 * [updates.md](updates.md): how Claude Keeper updates itself with Sparkle, and the signing key
+* [donations.md](donations.md): the two asks for a donation, `donation.json`, and how to reset it for testing
