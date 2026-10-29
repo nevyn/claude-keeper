@@ -663,7 +663,7 @@ case "agent":
     print("agent: \(SetupState.current().agent)\(LegacyAgent.installed ? ", v0.1 agent still installed" : "")")
 case "snapshot":
     guard let dir = CommandLine.arguments.dropFirst(2).first else { print("usage: claude-keeper snapshot <directory>"); exit(2) }
-    MainActor.assumeIsolated { renderSnapshots(to: URL(fileURLWithPath: dir)) }
+    MainActor.assumeIsolated { renderSnapshots(to: URL(fileURLWithPath: dir)); renderChooserSnapshots(to: URL(fileURLWithPath: dir)) }
 case "help", "--help", "-h":
     print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | version]; with no arguments, opens the setup window")
 default: MainActor.assumeIsolated { runApp() }
