@@ -158,6 +158,6 @@ func linkSelftest() -> Int {
     check("chooser falls back to the link summary", describe("claude://claude.ai/settings/connectors?x=1"), "claude://claude.ai/settings")
     let screen = NSRect(x: 0, y: 0, width: 1000, height: 800), size = NSSize(width: 300, height: 150)
     check("chooser opens below and right of the pointer", chooserFrame(size: size, at: NSPoint(x: 100, y: 500), in: screen), NSRect(x: 100, y: 350, width: 300, height: 150))
-    check("chooser stays inside the screen", chooserFrame(size: size, at: NSPoint(x: 900, y: 50), in: screen), NSRect(x: 700, y: 0, width: 300, height: 150))
+    check("chooser stays inside the screen", chooserFrame(size: size, at: NSPoint(x: 900, y: 50), in: screen), NSRect(x: 688, y: 12, width: 300, height: 150))
     return failures
 }

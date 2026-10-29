@@ -38,11 +38,13 @@ enum Chooser {
     }
 }
 
-/// The chooser's frame: its top-left corner at `point`, moved inside `visible` (a screen's visible frame) where it
-/// would stick out.
+let chooserMargin = 12.0
+
+/// The chooser's frame: its top-left corner at `point`, moved to stay `chooserMargin` inside `visible` (a screen's
+/// visible frame) where it would come closer to an edge.
 func chooserFrame(size: NSSize, at point: NSPoint, in visible: NSRect?) -> NSRect {
     var frame = NSRect(origin: NSPoint(x: point.x, y: point.y - size.height), size: size)
-    guard let visible else { return frame }
+    guard let visible = visible?.insetBy(dx: chooserMargin, dy: chooserMargin) else { return frame }
     frame.origin.x = max(visible.minX, min(frame.minX, visible.maxX - size.width))
     frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - size.height))
     return frame
