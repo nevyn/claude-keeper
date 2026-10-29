@@ -230,10 +230,6 @@ struct StepRow<Accessory: View>: View {
 
 // MARK: - Window
 
-final class SetupAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-}
-
 @MainActor
 func makeSetupWindow(_ setup: Setup) -> NSWindow {
     let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
@@ -278,18 +274,14 @@ func makeMainMenu() -> NSMenu {
 }
 
 @MainActor
-func runSetupWindow() -> Never {
+func showSetupWindow() {
     let app = NSApplication.shared
-    let delegate = SetupAppDelegate()
-    app.delegate = delegate
     app.setActivationPolicy(.regular)
     app.mainMenu = makeMainMenu()
     let window = makeSetupWindow(Setup(.current(), live: true))
     window.center()
     window.makeKeyAndOrderFront(nil)
     app.activate(ignoringOtherApps: true)
-    app.run()
-    exit(0)
 }
 
 // MARK: - Snapshots

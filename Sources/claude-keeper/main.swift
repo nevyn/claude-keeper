@@ -606,6 +606,7 @@ func selftest() -> Int32 {
         if notes.count == 2, notes[1].action == .relaunch([p]), notes[1].note.contains("did not install") { print("ok   \(label)") }
         else { failures += 1; print("FAIL \(label): got \(notes)") }
     }
+    failures += linkSelftest()
     return failures == 0 ? 0 : 1
 }
 
@@ -665,5 +666,5 @@ case "snapshot":
     MainActor.assumeIsolated { renderSnapshots(to: URL(fileURLWithPath: dir)) }
 case "help", "--help", "-h":
     print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | version]; with no arguments, opens the setup window")
-default: MainActor.assumeIsolated { runSetupWindow() }
+default: MainActor.assumeIsolated { runApp() }
 }
