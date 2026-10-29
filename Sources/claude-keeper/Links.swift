@@ -102,9 +102,12 @@ func sendLink(_ url: URL, to pid: Int32) throws {
 
 /// Opens `url` with `Claude.app` through LaunchServices: the behaviour without link routing. Needs no grant, and
 /// launches the default instance if nothing is running.
-func openWithClaude(_ url: URL) {
+/// - Parameter completion: runs once on the main queue after LaunchServices has answered, whether or not it opened
+///   the link; a failure is logged. A router process that quits before then can lose the link.
+func openWithClaude(_ url: URL, then completion: @escaping @MainActor () -> Void = {}) {
     NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: claudeBundle), configuration: NSWorkspace.OpenConfiguration()) { _, error in
         if let error { log("error: could not open \(linkSummary(url)) with \(claudeBundle): \(error)") }
+        DispatchQueue.main.async { completion() }
     }
 }
 
@@ -147,5 +150,14 @@ func linkSelftest() -> Int {
     check("navigation link with one instance running goes there", route(.navigation, instances: all, running: [p: 20], lastActive: nil), .deliver(p))
     check("nothing running fails open", route(.navigation, instances: all, running: [:], lastActive: lastP), .failOpen("no instance is running"))
     check("summary drops the query and the rest of the path", linkSummary(URL(string: "claude://claude.ai/mcp-auth-callback/sdk?code=secret")!), "claude://claude.ai/mcp-auth-callback")
+
+    let describe = { (s: String) in chooserLinkDescription(URL(string: s)!) }
+    check("chooser names a conversation", describe("claude://claude.ai/chat/0a1b"), "a conversation")
+    check("chooser names a Claude Code session", describe("claude://code/continue?session=last"), "a Claude Code session")
+    check("chooser names a project", describe("claude://claude.ai/project/0a1b"), "a project")
+    check("chooser falls back to the link summary", describe("claude://claude.ai/settings/connectors?x=1"), "claude://claude.ai/settings")
+    let screen = NSRect(x: 0, y: 0, width: 1000, height: 800), size = NSSize(width: 300, height: 150)
+    check("chooser opens below and right of the pointer", chooserFrame(size: size, at: NSPoint(x: 100, y: 500), in: screen), NSRect(x: 100, y: 350, width: 300, height: 150))
+    check("chooser stays inside the screen", chooserFrame(size: size, at: NSPoint(x: 900, y: 50), in: screen), NSRect(x: 700, y: 0, width: 300, height: 150))
     return failures
 }
