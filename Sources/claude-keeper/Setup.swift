@@ -238,12 +238,44 @@ func makeSetupWindow(_ setup: Setup) -> NSWindow {
     return window
 }
 
+/// Without a nib, the app has no main menu, and so no Cmd-Q, Cmd-W or Cmd-H.
+@MainActor
+func makeMainMenu() -> NSMenu {
+    func menu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = NSMenu(title: title)
+        items.forEach(item.submenu!.addItem)
+        return item
+    }
+    func item(_ title: String, _ action: Selector, _ key: String, _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        return item
+    }
+    let main = NSMenu()
+    main.addItem(menu("Claude Keeper", [
+        item("About Claude Keeper", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+        .separator(),
+        item("Hide Claude Keeper", #selector(NSApplication.hide(_:)), "h"),
+        item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+        item("Show All", #selector(NSApplication.unhideAllApplications(_:)), ""),
+        .separator(),
+        item("Quit Claude Keeper", #selector(NSApplication.terminate(_:)), "q"),
+    ]))
+    main.addItem(menu("Window", [
+        item("Close", #selector(NSWindow.performClose(_:)), "w"),
+        item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+    ]))
+    return main
+}
+
 @MainActor
 func runSetupWindow() -> Never {
     let app = NSApplication.shared
     let delegate = SetupAppDelegate()
     app.delegate = delegate
     app.setActivationPolicy(.regular)
+    app.mainMenu = makeMainMenu()
     let window = makeSetupWindow(Setup(.current(), live: true))
     window.center()
     window.makeKeyAndOrderFront(nil)
