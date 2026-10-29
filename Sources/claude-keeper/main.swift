@@ -101,8 +101,9 @@ struct UpdateModel: Codable, Equatable {
 struct Instance {
     let name: String
     let bundlePath: String
-    let userDataDir: String?      // the `--user-data-dir` argument; nil for the default instance
-    var dataDir: String { userDataDir ?? NSHomeDirectory() + "/Library/Application Support/Claude" }
+    let userDataDir: String?      // the `--user-data-dir` argument; nil for the default instance and HOME-override instances
+    var home: String? = nil       // the `HOME` of a Parall HOME-override instance; nil for every other instance
+    var dataDir: String { userDataDir ?? (home ?? NSHomeDirectory()) + "/Library/Application Support/Claude" }
 
     var updateAttempt: UpdateAttempt? {
         (try? Data(contentsOf: URL(fileURLWithPath: dataDir + "/update-attempt"))).flatMap { try? JSONDecoder().decode(UpdateAttempt.self, from: $0) }
@@ -111,45 +112,90 @@ struct Instance {
 
 let claudeBundle = "/Applications/Claude.app"
 let claudeExecutable = claudeBundle + "/Contents/MacOS/Claude"
+let applicationDirs = ["/Applications", NSHomeDirectory() + "/Applications"]
 
+/// The default instance, then every launcher in `applicationDirs`: Claude Keeper's own (see docs/instances.md) and
+/// Parall's, in both its data-directory and its HOME-override mode.
 func discoverInstances() -> [Instance] {
     var found = [Instance(name: defaultName, bundlePath: claudeBundle, userDataDir: nil)]
-    let dirs = ["/Applications", NSHomeDirectory() + "/Applications"]
-    for dir in dirs {
+    for dir in applicationDirs {
         for entry in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where entry.hasSuffix(".app") {
             let path = dir + "/" + entry
             guard let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist") as? [String: Any],
-                  info["ParallAppBundleId"] as? String == "com.anthropic.claudefordesktop",
-                  let dataDir = info["ParallDataStorage"] as? String, !dataDir.isEmpty
-            else { continue }
-            found.append(Instance(name: (info["CFBundleName"] as? String) ?? entry, bundlePath: path, userDataDir: dataDir))
+                  let instance = launcherInstance(info: info, bundlePath: path) else { continue }
+            found.append(instance)
         }
     }
     return found
+}
+
+/// The instance that a launcher's Info.plist describes, or nil when the bundle is no Claude launcher.
+func launcherInstance(info: [String: Any], bundlePath: String) -> Instance? {
+    let name = (info["CFBundleName"] as? String) ?? ((bundlePath as NSString).lastPathComponent as NSString).deletingPathExtension
+    if let dataDir = info[launcherDataDirKey] as? String, !dataDir.isEmpty {
+        return Instance(name: name, bundlePath: bundlePath, userDataDir: dataDir)
+    }
+    guard info["ParallAppBundleId"] as? String == "com.anthropic.claudefordesktop" else { return nil }
+    if let dataDir = info["ParallDataStorage"] as? String, !dataDir.isEmpty {
+        return Instance(name: name, bundlePath: bundlePath, userDataDir: dataDir)
+    }
+    guard let home = (info["ParallHomeDirectory"] as? String).flatMap(otherHome) else { return nil }
+    return Instance(name: name, bundlePath: bundlePath, userDataDir: nil, home: home)
+}
+
+/// `home` with `~` expanded and the path standardized, or nil when it is empty or the user's own home.
+func otherHome(_ home: String) -> String? {
+    guard !home.isEmpty else { return nil }
+    let path = ((home as NSString).expandingTildeInPath as NSString).standardizingPath
+    return path == (NSHomeDirectory() as NSString).standardizingPath ? nil : path
 }
 
 func installedVersion() -> String? {
     NSDictionary(contentsOfFile: claudeBundle + "/Contents/Info.plist")?["CFBundleShortVersionString"] as? String
 }
 
-func processArguments(_ pid: Int32) -> [String]? {
+/// A process's arguments and environment, as `KERN_PROCARGS2` returns them for a process of the same user.
+struct ProcessArgs: Equatable {
+    var arguments: [String]
+    var environment: [String: String]
+}
+
+func processArgs(_ pid: Int32) -> ProcessArgs? {
     var mib = [CTL_KERN, KERN_PROCARGS2, pid]
     var size = 0
     guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return nil }
     var buf = [UInt8](repeating: 0, count: size)
     guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0 else { return nil }
-    let argc = buf.withUnsafeBytes { Int($0.load(as: Int32.self)) }
+    return parseProcArgs(Array(buf.prefix(size)))
+}
+
+func processArguments(_ pid: Int32) -> [String]? { processArgs(pid)?.arguments }
+
+/// Parses a `KERN_PROCARGS2` buffer: argc (Int32), the exec path, NUL padding, argc arguments, then the environment
+/// up to an empty string. The kernel's own `apple[]` strings follow that empty string and are not returned.
+func parseProcArgs(_ buf: [UInt8]) -> ProcessArgs? {
+    guard buf.count > 4 else { return nil }
+    let argc = buf.withUnsafeBytes { Int($0.loadUnaligned(as: Int32.self)) }
+    let size = buf.count
     var i = 4
     while i < size && buf[i] != 0 { i += 1 }   // exec path
     while i < size && buf[i] == 0 { i += 1 }   // padding
-    var args: [String] = []
-    while args.count < argc && i < size {
+    func next() -> String {
         let start = i
         while i < size && buf[i] != 0 { i += 1 }
-        args.append(String(decoding: buf[start..<i], as: UTF8.self))
-        i += 1
+        defer { i += 1 }
+        return String(decoding: buf[start..<i], as: UTF8.self)
     }
-    return args
+    var args: [String] = []
+    while args.count < argc && i < size { args.append(next()) }
+    var environment: [String: String] = [:]
+    while i < size {
+        let entry = next()
+        if entry.isEmpty { break }
+        guard let eq = entry.firstIndex(of: "=") else { continue }
+        environment[String(entry[..<eq])] = String(entry[entry.index(after: eq)...])
+    }
+    return ProcessArgs(arguments: args, environment: environment)
 }
 
 func allPids() -> [Int32] {
@@ -169,16 +215,25 @@ func bsdInfo(_ pid: Int32) -> proc_bsdinfo? {
     return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size ? info : nil
 }
 
-/// Main process of every running instance, keyed by instance name.
+/// Main process of every running instance, keyed by instance name. A process with `--user-data-dir` belongs to the
+/// instance with that directory; one without belongs to the HOME-override instance with its `HOME`, or else to the
+/// default instance.
 func runningInstances(_ instances: [Instance]) -> [String: Int32] {
     var result: [String: Int32] = [:]
     for pid in allPids() {
-        guard executablePath(pid) == claudeExecutable, let args = processArguments(pid),
-              !args.contains(where: { $0.hasPrefix("--type=") }) else { continue }
-        let dataDir = args.first { $0.hasPrefix("--user-data-dir=") }.map { String($0.dropFirst("--user-data-dir=".count)) }
-        if let name = instances.first(where: { $0.userDataDir == dataDir })?.name { result[name] = pid }
+        guard executablePath(pid) == claudeExecutable, let process = processArgs(pid),
+              let name = instanceName(of: process, among: instances) else { continue }
+        result[name] = pid
     }
     return result
+}
+
+/// The instance that a Claude process belongs to, or nil for a helper process or an unknown instance.
+func instanceName(of process: ProcessArgs, among instances: [Instance]) -> String? {
+    guard !process.arguments.contains(where: { $0.hasPrefix("--type=") }) else { return nil }
+    let dataDir = process.arguments.first { $0.hasPrefix("--user-data-dir=") }.map { String($0.dropFirst("--user-data-dir=".count)) }
+    let home = dataDir == nil ? process.environment["HOME"].flatMap(otherHome) : nil
+    return instances.first { $0.userDataDir == dataDir && $0.home == home }?.name
 }
 
 /// Seconds since the last keyboard, mouse or trackpad input, including input over Screen Sharing; 0 when unreadable.
@@ -683,6 +738,7 @@ func selftest() -> Int32 {
     failures += linkSelftest()
     failures += updateSelftest()
     failures += donationSelftest()
+    failures += instanceSelftest()
     return failures == 0 ? 0 : 1
 }
 
@@ -745,7 +801,7 @@ case "agent":
 case "snapshot":
     guard let dir = CommandLine.arguments.dropFirst(2).first else { print("usage: claude-keeper snapshot <directory>"); exit(2) }
     let url = URL(fileURLWithPath: dir)
-    MainActor.assumeIsolated { renderSnapshots(to: url); renderChooserSnapshots(to: url); renderDonationReminderSnapshots(to: url) }
+    MainActor.assumeIsolated { renderSnapshots(to: url); renderChooserSnapshots(to: url); renderDonationReminderSnapshots(to: url); renderAddInstanceSnapshots(to: url) }
 case "help", "--help", "-h":
     print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | check-for-updates | donation-reminder | version]; with no arguments, opens the setup window")
 default: MainActor.assumeIsolated { runApp() }

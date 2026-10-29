@@ -89,6 +89,7 @@ final class Setup: ObservableObject {
     @Published var error: String?
     @Published private(set) var linkRoutingError: String?
     @Published private(set) var linkRoutingBusy = false
+    @Published var addInstance: AddInstance?
     private var timer: Timer?
     private var agentHasGrant = false
     private var recordedSetupCompleted = false
@@ -177,6 +178,14 @@ final class Setup: ObservableObject {
         refresh()
     }
 
+    func showAddInstance() {
+        addInstance = AddInstance(existing: .current(), applications: launcherDirectory(),
+                                  baseIcon: claudeIcon() ?? NSWorkspace.shared.icon(forFile: claudeBundle)) { [weak self] in
+            self?.addInstance = nil
+            self?.refresh()
+        }
+    }
+
     func openShortcutSettings() { open("x-apple.systempreferences:com.apple.Keyboard-Settings.extension") }
     func openLoginItems() { SMAppService.openSystemSettingsLoginItems() }
     func showInFinder() { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }
@@ -214,6 +223,7 @@ struct SetupView: View {
         .frame(width: 540)
         .background(Color(nsColor: .windowBackgroundColor).ignoresSafeArea())
         .tint(Palette.coral)
+        .sheet(item: $setup.addInstance) { AddInstanceView(model: $0) }
     }
 
     private var header: some View {
@@ -247,11 +257,11 @@ struct SetupView: View {
     }
 
     @ViewBuilder private var steps: some View {
-        StepRow(status: state.instances.count >= 2 ? .done : .attention, title: "Claude instances",
+        StepRow(status: .done, title: "Claude instances",
                 detail: state.instances.count >= 2
                     ? state.instances.joined(separator: ", ")
-                    : "Only \(state.instances.first ?? "no Claude") found. Make a second instance with Parall, and the keeper will look after both.") {
-            if state.instances.count < 2 { Link("Parall", destination: URL(string: "https://parall.app")!) }
+                    : "Only \(state.instances.first ?? defaultName) so far. Add an instance to keep a second account signed in next to it.") {
+            Button("Add Instance…", action: setup.showAddInstance)
         }
         StepRow(status: state.agent == .on ? .done : state.agent == .needsApproval ? .attention : .todo(2), title: "Background keeper",
                 detail: state.agent == .needsApproval
@@ -449,6 +459,8 @@ extension SetupState {
         ("done", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .on, accessibility: true, desktopCount: 3, missingShortcuts: [])),
         ("done-donation", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .on, accessibility: true, desktopCount: 3,
                                      missingShortcuts: [], asksForDonation: true)),
+        ("several-instances", SetupState(location: .applications, instances: ["Claude", "Claude (Private)", "Claude (Work)", "Claude (Client)"],
+                                         agent: .on, accessibility: true, desktopCount: 3, missingShortcuts: [])),
         ("single-instance", SetupState(location: .applications, instances: ["Claude"], agent: .off, accessibility: false, desktopCount: 1, missingShortcuts: [])),
         ("translocated", SetupState(location: .translocated, instances: ["Claude", "Claude (Personal)"], agent: .off, accessibility: false, desktopCount: 3, missingShortcuts: [2, 3])),
         ("link-routing-off", linkRouting(.off)),

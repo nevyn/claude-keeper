@@ -3,8 +3,12 @@
 **Claude Keeper**: the app. Its executable is both the **setup window** (opened from Finder) and
 the **agent** (started by launchd with `run`). Avoid "wizard" and "daemon".
 
-**Instance**: one copy of Claude desktop with its own user-data dir: `/Applications/Claude.app`
-or a Parall copy of it. Not "app" or "window".
+**Instance**: one copy of Claude desktop with its own user-data dir: `/Applications/Claude.app`,
+or Claude started from a launcher. Not "app" or "window".
+
+**Launcher**: the small app that opens an instance other than the default instance, by running
+Claude's binary with another data directory. Claude Keeper makes launchers with "Add Instance…";
+Parall makes them too. See [instances.md](instances.md). Avoid "shortcut", "clone" and "copy".
 
 **Default instance**: `/Applications/Claude.app`, the one ShipIt relaunches. Avoid "unprefixed"
 in code; it is fine in prose aimed at Parall users.
