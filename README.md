@@ -4,8 +4,9 @@
 
 A Mac app that keeps several Claude desktop instances running through auto-updates, and
 relaunches each on the macOS desktop (Space) where it was last seen. It is for people who run
-a second copy of Claude with [Parall](https://parall.app), for example one signed in to a work
-account and one to a personal account.
+a second Claude, for example one signed in to a work account and one to a personal account.
+Claude Keeper can make those extra instances itself, and it also looks after instances made
+with [Parall](https://parall.app).
 
 Background and the story of how it came about: [nevyn.dev/blog/20261027-two-claude-desktops](https://nevyn.dev/blog/20261027-two-claude-desktops/).
 
@@ -13,20 +14,20 @@ Background and the story of how it came about: [nevyn.dev/blog/20261027-two-clau
 
 Claude installs updates by quitting itself after an idle timeout, and Squirrel's ShipIt then
 replaces `/Applications/Claude.app`. ShipIt waits until no process runs that bundle's binary.
-A Parall copy is a small launcher that runs the same binary with its own `--user-data-dir`, so
+Every extra instance is a small launcher that runs the same binary with its own `--user-data-dir`, so
 with two instances the update gets stuck: the instance whose idle timer fired quits and stays
 down, while the other one holds the install back. When ShipIt finally installs, it relaunches
 only the unprefixed Claude.
 
 ## Install
 
-Requirements: macOS 13 or later, Claude in `/Applications`, and Parall copies of it in
-`/Applications` or `~/Applications`.
+Requirements: macOS 13 or later and Claude in `/Applications`.
 
 1. Download `Claude-Keeper.zip` from the [latest release](https://github.com/nevyn/claude-keeper/releases/latest).
 2. Drag Claude Keeper into your Applications folder, and open it.
-3. Follow the steps in its window: turn on the background keeper, allow Accessibility, and turn
-   on "Switch to Desktop N" for your desktops. The last two are optional; without them,
+3. Follow the steps in its window: add an instance with "Add Instance…" unless you have one
+   already, turn on the background keeper, allow Accessibility, and turn on "Switch to Desktop N"
+   for your desktops. The last two are optional; without them,
    instances relaunch on the current desktop.
 
 Claude Keeper is free. If it keeps your Claudes running, you can chip in on [Ko-fi](https://ko-fi.com/nevynjpg).
@@ -61,9 +62,11 @@ A session is a `.../claude-code/...` CLI process under the instance, plus the to
 It counts as busy while its transcript (`~/.claude/projects/*/<session-id>.jsonl`) changes, or
 while its processes use more than about 3% of a core, which an idle CLI does not.
 
-Instances are `/Applications/Claude.app` plus every app bundle in `/Applications` or
-`~/Applications` whose Info.plist has `ParallAppBundleId = com.anthropic.claudefordesktop`.
-A running instance is told apart by its main process's `--user-data-dir` argument.
+Instances are `/Applications/Claude.app` plus every launcher in `/Applications` or
+`~/Applications`: Claude Keeper's own, whose Info.plist has `ClaudeKeeperDataDir`, and Parall's,
+whose Info.plist has `ParallAppBundleId = com.anthropic.claudefordesktop`. A running instance is
+told apart by its main process's `--user-data-dir` argument, or for a Parall launcher that
+overrides `HOME`, by the process's `HOME`. See [docs/instances.md](docs/instances.md).
 
 About every 5 seconds the keeper saves each instance's desktop, taken from its largest window.
 To relaunch an instance, it posts your "Switch to Desktop N" shortcut, launches the instance with
@@ -114,7 +117,7 @@ that. Maintainers publish releases with `./release.sh`, described in [docs/relea
   public API for moving another app's window between desktops, and Dock's "Assign To" setting
   keys on bundle ID, which all instances share. That is why the keeper switches desktops before
   it launches an instance.
-* The unprefixed Claude cannot be launched while a Parall copy runs: LaunchServices sees
+* The unprefixed Claude cannot be launched while another instance runs: LaunchServices sees
   Claude.app as running and ignores the request. The keeper launches it first for that reason.
 
 ## License
