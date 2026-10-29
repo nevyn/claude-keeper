@@ -101,6 +101,11 @@ rm -f $notes
 check=$(mktemp -d -t claude-keeper-check)
 curl -fsSL -o $check/${zip:t} "$repo_url/releases/download/v$version/${zip:t}"
 cmp -s $check/${zip:t} $zip || die "downloaded zip differs from $zip"
-curl -fsSL -o $check/appcast.xml "$repo_url/releases/latest/download/appcast.xml"
-[[ "$(<$check/appcast.xml)" == *"<sparkle:version>$version</sparkle:version>"* ]] || die "$repo_url/releases/latest/download/appcast.xml does not offer v$version; see $check/appcast.xml"
+# GitHub's latest/download redirect can serve the previous release for a minute or two after publishing.
+for attempt in {1..12}; do
+  curl -fsSL -o $check/appcast.xml "$repo_url/releases/latest/download/appcast.xml"
+  [[ "$(<$check/appcast.xml)" == *"<sparkle:version>$version</sparkle:version>"* ]] && break
+  (( attempt < 12 )) || die "$repo_url/releases/latest/download/appcast.xml still does not offer v$version after 3 minutes; see $check/appcast.xml"
+  sleep 15
+done
 print "Released v$version; the download matches $zip, and the feed offers it."
