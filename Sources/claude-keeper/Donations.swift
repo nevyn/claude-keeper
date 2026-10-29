@@ -94,8 +94,8 @@ final class DonationReminder: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var panel: DonationReminderPanel?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let panel = DonationReminderPanel(donate: { donate(); self.quit("donation reminder: the user clicked Donate…") },
-                                          notNow: { self.quit("donation reminder: the user clicked Not Now") })
+        let panel = DonationReminderPanel(donate: { donate(); self.quit("donation reminder: the user clicked Tip on Ko-fi…") },
+                                          notNow: { self.quit("donation reminder: the user clicked Maybe Later") })
         self.panel = panel
         panel.delegate = self
         panel.setFrame(centeredFrame(size: panel.frame.size, in: NSScreen.main?.visibleFrame), display: false)
@@ -126,13 +126,13 @@ struct DonationReminderView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 64, height: 64)
-            Text("Enjoying Claude Keeper?").font(.headline)
-            Text("Claude Keeper has kept your Claudes running for two weeks now. It's free to use, and €20 on Ko-fi is a nice way to say thanks.")
+            Text("Two weeks in :)").font(.headline)
+            Text("If Claude Keeper has made your vibing a little smoother these past two weeks, a small donation would be much appreciated :)")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
-                Button(action: notNow) { Text("Not Now").frame(maxWidth: .infinity) }
+                Button(action: notNow) { Text("Maybe Later").frame(maxWidth: .infinity) }
                     .keyboardShortcut(.cancelAction)
-                Button(action: donate) { Text("Donate…").frame(maxWidth: .infinity) }
+                Button(action: donate) { Text("Tip on Ko-fi…").frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent)
             }
             .controlSize(.large)

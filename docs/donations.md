@@ -9,7 +9,7 @@ this and has no way to tell whether anyone donated. Both asks open `donationURL`
 1. **The setup window's footer.** Once the setup window shows "All set" (`SetupState.done`), its
    footer adds "Claude Keeper is free. If it keeps your Claudes running, consider chipping in €20."
    with a Donate… button. The line stays until the donation reminder has been shown or the user has
-   clicked Donate… in either place; after that, the footer only has "All set".
+   clicked Donate… there or Tip on Ko-fi… in the reminder; after that, the footer only has "All set".
 2. **The donation reminder.** 14 days after setup was first completed, the agent launches the app
    once in the `donation-reminder` role, the same way that it launches an update check (see
    [updates.md](updates.md)):
@@ -18,8 +18,8 @@ this and has no way to tell whether anyone donated. Both asks open `donationURL`
    open -g -n -a "/Applications/Claude Keeper.app" --args donation-reminder
    ```
 
-   The role is an accessory process with one panel: the app icon, "Enjoying Claude Keeper?", a
-   sentence about the two weeks and Ko-fi, and the buttons Not Now and Donate…. Either button, or
+   The role is an accessory process with one panel: the app icon, "Two weeks in :)", a sentence
+   about the two weeks, and the buttons Maybe Later and Tip on Ko-fi…. Either button, or
    closing the panel, quits the role.
 
    macOS refuses activation to an app that was launched in the background, so the panel is a
@@ -46,12 +46,12 @@ Times are seconds since 1970; a missing key means that it has not happened.
   running from the app writes it on its first tick if it is still missing. Nothing overwrites it.
 * `reminderShown`: the `donation-reminder` role writes it as soon as its panel is on screen, so the
   reminder shows at most once, even if the user never answers it.
-* `donateClicked`: the first click on Donate…, in either place.
+* `donateClicked`: the first click on Donate… (footer) or Tip on Ko-fi… (reminder).
 
 The agent reads the file once a minute and launches the role when `donationReminderDue` says so (the
 selftest covers it). When the role never gets its panel on screen, the agent launches it again an
 hour later. The role checks the file too, and quits without a window if the reminder has been shown
-or the user has clicked Donate….
+or the user has clicked either donation button.
 
 ## Testing
 
