@@ -45,12 +45,16 @@ The **last-active instance** is the instance that was most recently frontmost. T
 z-order cannot replace this: it only covers the current desktop.
 
 The **chooser** is a panel at the mouse pointer that lists the running instances with their
-icons. Return opens the preselected one, 1–9 pick one, and Esc or a click outside drops the link.
+icons. It highlights the last-active instance, or the first one when there is none. Return opens
+the highlighted one, Up and Down or the pointer move the highlight, 1–9 or a click pick one, and
+Esc or a click outside drops the link. A link that needs the chooser while it is up waits its
+turn, because a second panel would take key status from the first and so drop its link. Links
+that need no chooser are forwarded meanwhile.
 
 ## Failing open
 
-When the router cannot forward a link (no Automation grant, no running instance, the send
-fails, no last-active instance for a sign-in link), it opens the link with `Claude.app`
+When the router cannot forward a link (Automation denied, no running instance, the send
+fails or the Automation prompt times out, no last-active instance for a sign-in link), it opens the link with `Claude.app`
 through LaunchServices. That is the behaviour without link routing, and it needs no grant; a
 cold Claude buffers the link until its window is ready. The router never logs a link's query,
 because sign-in links carry codes.
