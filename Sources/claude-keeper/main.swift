@@ -373,6 +373,7 @@ final class Keeper {
     var instances = discoverInstances()
     var model = load(UpdateModel.self, from: modelURL) ?? UpdateModel()
     var placements = load([String: Placement].self, from: placementsURL) ?? [:]
+    var lastActive = load(LastActive.self, from: lastActiveURL)
     let activity = SessionActivity()
     var tick = 0
 
@@ -391,6 +392,7 @@ final class Keeper {
                 if tick % 60 == 0 { instances = discoverInstances() }
                 let now = Date().timeIntervalSince1970
                 let running = runningInstances(instances)
+                recordLastActive(running, now: now)
                 if tick % 5 == 0 { activity.sample(running, now: now); recordPlacements(running) }
                 let observation = Observation(
                     running: running,
@@ -418,6 +420,15 @@ final class Keeper {
             if let p = windowPlacement(pid: pid), placements[name] != p { placements[name] = p; changed = true }
         }
         if changed { save(placements, to: placementsURL) }
+    }
+
+    /// Saves the frontmost instance to `lastActiveURL` when it changes, for the router; see docs/link-routing.md.
+    func recordLastActive(_ running: [String: Int32], now: Double) {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let name = running.first(where: { $0.value == pid })?.key,
+              lastActive?.name != name || lastActive?.pid != pid else { return }
+        lastActive = LastActive(name: name, pid: pid, ts: now)
+        save(lastActive, to: lastActiveURL)
     }
 
     /// Quits each instance the way Cmd-Q does, falling back to SIGTERM.
