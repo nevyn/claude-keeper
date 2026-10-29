@@ -5,6 +5,7 @@ import AppKit
 /// handle links, because LaunchServices gives a link to a running Claude Keeper process instead of launching one.
 @MainActor
 func runApp() -> Never {
+    if isatty(STDERR_FILENO) == 0 { redirectOutputToLog() }  // LaunchServices points stderr at /dev/null
     let app = NSApplication.shared
     let delegate = AppDelegate()
     app.delegate = delegate
@@ -40,7 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !finishedLaunching && !launchedForLink {
             launchedForLink = true
-            redirectOutputToLog()
             NSApp.setActivationPolicy(.accessory)  // before Router.open can activate the app for the chooser
         }
         MainActor.assumeIsolated { Router.shared.open(url) }
