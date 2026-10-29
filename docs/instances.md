@@ -68,11 +68,13 @@ label in a coloured pill near the bottom, rendered at every size from 16 to 1024
 with `iconutil`. Below 64 px the pill has no text, which would be unreadable there. The icon is
 made once, so a later Claude update does not change it.
 
-The label shows in Finder, Spotlight, Launchpad and the chooser. The Dock always shows a
-running instance with Claude.app's icon: the Dock follows the bundle of the running
-executable, and after `exec` that is Claude.app. Parall's launchers get their label into the
-Dock only because their bundle is quarantined and runs translocated. Claude Keeper does not try
-to imitate that.
+The label shows in Finder, Spotlight, Launchpad, the chooser and the Dock. On macOS 27
+(2026-10-29), an instance from a Claude Keeper launcher kept the launcher's icon in the Dock
+whether the setup window, `open`, or the keeper's relaunch started it, even though
+LaunchServices lists the running process under Claude.app. A hand-made test launcher did not:
+it sat in `~/Applications`, had a minimal Info.plist and a copied icon, and was registered with
+`lsregister`, and its instance showed Claude's plain icon. Which of those differences matters
+was not isolated, so keep launchers as `installLauncher` builds them.
 
 ## Data directories
 
