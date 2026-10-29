@@ -450,7 +450,9 @@ func retinaSnapshot(of view: NSView) -> NSBitmapImageRep? {
 @MainActor
 func renderSnapshots(to dir: URL) {
     _ = NSApplication.shared
-    if let icon = Bundle.main.image(forResource: "AppIcon") { NSApp.applicationIconImage = icon }
+    if let icon = Bundle.main.image(forResource: "AppIcon") ?? NSImage(contentsOfFile: "app/AppIcon.icns") {  // the latter under `swift run` in the package
+        NSApp.applicationIconImage = icon
+    }
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     for (name, state) in SetupState.examples {
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
