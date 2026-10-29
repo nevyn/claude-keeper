@@ -150,5 +150,14 @@ func linkSelftest() -> Int {
     check("navigation link with one instance running goes there", route(.navigation, instances: all, running: [p: 20], lastActive: nil), .deliver(p))
     check("nothing running fails open", route(.navigation, instances: all, running: [:], lastActive: lastP), .failOpen("no instance is running"))
     check("summary drops the query and the rest of the path", linkSummary(URL(string: "claude://claude.ai/mcp-auth-callback/sdk?code=secret")!), "claude://claude.ai/mcp-auth-callback")
+
+    let describe = { (s: String) in chooserLinkDescription(URL(string: s)!) }
+    check("chooser names a conversation", describe("claude://claude.ai/chat/0a1b"), "a conversation")
+    check("chooser names a Claude Code session", describe("claude://code/continue?session=last"), "a Claude Code session")
+    check("chooser names a project", describe("claude://claude.ai/project/0a1b"), "a project")
+    check("chooser falls back to the link summary", describe("claude://claude.ai/settings/connectors?x=1"), "claude://claude.ai/settings")
+    let screen = NSRect(x: 0, y: 0, width: 1000, height: 800), size = NSSize(width: 300, height: 150)
+    check("chooser opens below and right of the pointer", chooserFrame(size: size, at: NSPoint(x: 100, y: 500), in: screen), NSRect(x: 100, y: 350, width: 300, height: 150))
+    check("chooser stays inside the screen", chooserFrame(size: size, at: NSPoint(x: 900, y: 50), in: screen), NSRect(x: 700, y: 0, width: 300, height: 150))
     return failures
 }

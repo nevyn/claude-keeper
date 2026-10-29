@@ -24,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         finishedLaunching = true
         if launchedForLink {
-            NSApp.setActivationPolicy(.accessory)
             MainActor.assumeIsolated { Router.shared.becomeRouterProcess() }
         } else {
             MainActor.assumeIsolated { showSetupWindow() }
@@ -39,7 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             log("error: ignored a GURL event without a URL")
             return
         }
-        if !finishedLaunching && !launchedForLink { launchedForLink = true; redirectOutputToLog() }
+        if !finishedLaunching && !launchedForLink {
+            launchedForLink = true
+            redirectOutputToLog()
+            NSApp.setActivationPolicy(.accessory)  // before Router.open can activate the app for the chooser
+        }
         MainActor.assumeIsolated { Router.shared.open(url) }
     }
 }
@@ -69,7 +72,13 @@ final class Router {
         let lastActive = load(LastActive.self, from: lastActiveURL)
         switch route(LinkKind(url), instances: instances.map(\.name), running: running, lastActive: lastActive) {
         case .deliver(let name): forward(url, to: name, pid: running[name]!)
-        case .choose: failOpen(url, "the chooser is not built yet")
+        case .choose(let names, let preselected):
+            let choices = names.compactMap { name in instances.first { $0.name == name } }
+            Chooser.ask(link: url, instances: choices, preselected: preselected) { picked in
+                guard let picked else { log("dropped \(linkSummary(url))"); return self.finish() }
+                guard let pid = runningInstances([picked])[picked.name] else { return self.failOpen(url, "\(picked.name) quit while the chooser was up") }
+                self.forward(url, to: picked.name, pid: pid)
+            }
         case .failOpen(let reason): failOpen(url, reason)
         }
     }
