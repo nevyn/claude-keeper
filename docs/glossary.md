@@ -12,6 +12,10 @@ in code; it is fine in prose aimed at Parall users.
 **Update attempt**: the `update-attempt` file that an instance writes into its user-data dir when
 it quits itself to install an update, and that its next launch consumes.
 
+**Update check**: one run of Claude Keeper's `check-for-updates` role, which asks Sparkle whether a
+newer Claude Keeper exists and installs it. The agent launches one a day. Not to be confused with an
+update attempt, which is about Claude.
+
 **Owed instance**: an instance that is down because it quit for an update, or because the keeper
 quit it, and that the keeper must relaunch.
 

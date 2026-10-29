@@ -1,6 +1,6 @@
 # The app and its agent
 
-`Claude Keeper.app` has one executable, `Contents/MacOS/ClaudeKeeper`, with three roles:
+`Claude Keeper.app` has one executable, `Contents/MacOS/ClaudeKeeper`, with four roles:
 
 * Opened from Finder (no arguments), it shows the setup window. It never runs in the background.
 * Started by launchd as `ClaudeKeeper run`, it is the agent. launchd starts it directly, not
@@ -9,6 +9,8 @@
   [link-routing.md](link-routing.md).
 * Launched by LaunchServices for a `claude://` link, it is the router: it forwards the link to an
   instance and quits. See [link-routing.md](link-routing.md).
+* Launched by the agent through LaunchServices as `ClaudeKeeper check-for-updates`, it runs one
+  update check with Sparkle, without a window, and quits. See [updates.md](updates.md).
 
 All roles have the same code identity (`dev.nevyn.ClaudeKeeper`, team M4Q2TE45WT), so the
 Accessibility grant that the setup window asks for applies to the agent, and the window's
@@ -43,7 +45,8 @@ changes, measured on macOS 26.6 and 27.0:
 
 So the agent checks its bundle every second (`BundleWatch`):
 
-* Its executable has a new inode: it exits, and launchd starts the new version.
+* Its executable has a new inode: it exits, and launchd starts the new version. This is also how
+  the agent picks up an update that Sparkle installed; see [updates.md](updates.md).
 * Its executable has been gone for 10 seconds, and a bookmark to the bundle resolves into the
   Trash or not at all: it calls `unregister()` and then boots out its own launchd job, which
   covers the case where Background Task Management dropped the record first.

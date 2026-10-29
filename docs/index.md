@@ -4,3 +4,4 @@
 * [link-routing.md](link-routing.md): how Claude Keeper forwards `claude://` links to the right instance
 * [glossary.md](glossary.md): the terms that the code and docs use
 * [releasing.md](releasing.md): publishing a signed, notarized release
+* [updates.md](updates.md): how Claude Keeper updates itself with Sparkle, and the signing key
