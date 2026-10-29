@@ -376,11 +376,14 @@ final class Keeper {
     var lastActive = load(LastActive.self, from: lastActiveURL)
     let activity = SessionActivity()
     var tick = 0
+    let ownBundle: URL? = Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main.bundleURL : nil
+    var schemeRetryAfter = 0.0
 
     func run() -> Never {
         log("claude-keeper \(version) watching \(instances.map { "\($0.name) (\($0.bundlePath))" }.joined(separator: ", "))")
         if CGPreflightPostEventAccess() { log("post-event access granted") }
         else { log("warning: \(SwitchError.noPostEventAccess); instances will relaunch on the current desktop") }
+        log("link routing \(linkRoutingOn ? "on" : "off")\(ownBundle == nil ? "; not running from an app bundle, so the agent leaves the \(linkScheme):// handler alone" : "")")
         let watch = BundleWatch()
         while true {
             autoreleasepool {  // no run loop drains the pool, so each tick's autoreleased objects would live forever
@@ -393,6 +396,7 @@ final class Keeper {
                 let now = Date().timeIntervalSince1970
                 let running = runningInstances(instances)
                 recordLastActive(running, now: now)
+                keepScheme(now: now)
                 if tick % 5 == 0 { activity.sample(running, now: now); recordPlacements(running) }
                 let observation = Observation(
                     running: running,
@@ -429,6 +433,30 @@ final class Keeper {
               lastActive?.name != name || lastActive?.pid != pid else { return }
         lastActive = LastActive(name: name, pid: pid, ts: now)
         save(lastActive, to: lastActiveURL)
+    }
+
+    /// Claims `claude://` links while link routing is on and hands them back to Claude while it is off. Every instance
+    /// takes the scheme 5-11 s after it launches, so a claim after each launch is expected. A failure waits 60 s.
+    func keepScheme(now: Double) {
+        guard let own = ownBundle, now >= schemeRetryAfter else { return }
+        let handler = schemeHandler()
+        let ours = handler.map { isSameBundle($0, own) } ?? false
+        let target: URL
+        switch (linkRoutingOn, ours) {
+        case (true, false): target = own
+        case (false, true): target = URL(fileURLWithPath: claudeBundle)
+        default: return
+        }
+        let from = handler?.path ?? "no handler"
+        do {
+            try setSchemeHandler(target)
+            let after = schemeHandler()
+            guard let after, isSameBundle(after, target) else { throw SchemeError.didNotTake(target: target.path, handler: after?.path) }
+            log(ours ? "handed \(linkScheme):// links back to \(target.path)" : "claimed \(linkScheme):// links back from \(from)")
+        } catch {
+            schemeRetryAfter = now + 60
+            log("error: could not make \(target.path) the \(linkScheme):// handler instead of \(from) (trying again in 60 s): \(error)")
+        }
     }
 
     /// Quits each instance the way Cmd-Q does, falling back to SIGTERM.
@@ -632,6 +660,9 @@ case "status":
     print("active desktop: \(placement(ofSpace: CGSGetActiveSpace(cgs)).map { "\($0.desktop)" } ?? "fullscreen space")")
     print("user idle: \(Int(userIdleSeconds())) s")
     print("post-event access (this process): \(CGPreflightPostEventAccess() ? "granted" : "MISSING")")
+    print("link routing: \(linkRoutingOn ? "on" : "off")")
+    print("\(linkScheme):// handler: \(schemeHandler()?.path ?? "none")")
+    print("last active: \(load(LastActive.self, from: lastActiveURL).map { "\($0.name) (pid \($0.pid), \(Int(Date().timeIntervalSince1970 - $0.ts)) s ago)" } ?? "-")")
     for i in instances {
         let window = running[i.name].flatMap { windowPlacement(pid: $0) }.map { "desktop \($0.desktop)" } ?? "-"
         let attempt = i.updateAttempt.map { " update-attempt \($0.fromVersion) -> \($0.toVersion)" } ?? ""
