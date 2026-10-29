@@ -38,15 +38,11 @@ func updateSelftest() -> Int {
 
 // MARK: - Agent side
 
-/// Launches `bundle` through LaunchServices in the `check-for-updates` role, without activating it. The agent cannot
-/// run Sparkle itself: it has no run loop, and launchd starts it outside LaunchServices.
+/// Launches `bundle` in the `check-for-updates` role. The agent cannot run Sparkle itself: it has no run loop, and
+/// launchd starts it outside LaunchServices.
 func launchUpdateCheck(_ bundle: URL) {
-    let open = Process()
-    open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    open.arguments = ["-g", "-n", "-a", bundle.path, "--args", "check-for-updates"]
-    do { try open.run(); open.waitUntilExit() } catch { log("error: could not run /usr/bin/open to check for updates: \(error)"); return }
-    if open.terminationStatus == 0 { log("launched an update check") }
-    else { log("error: open -g -n -a \(bundle.path) --args check-for-updates exited \(open.terminationStatus); trying again in \(Int(updateCheckInterval / 3600)) h") }
+    if launchRole("check-for-updates", of: bundle) { log("launched an update check") }
+    else { log("trying the update check again in \(Int(updateCheckInterval / 3600)) h") }
 }
 
 // MARK: - The check-for-updates role

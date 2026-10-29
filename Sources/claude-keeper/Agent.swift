@@ -91,6 +91,18 @@ enum SchemeError: Error, CustomStringConvertible {
     }
 }
 
+/// Launches `bundle` through LaunchServices as a new process with `role` as its argument, without activating it, and
+/// returns whether `open` succeeded. Logs why when it did not. The agent launches the roles that need a run loop or a
+/// window this way, since launchd starts the agent itself outside LaunchServices.
+func launchRole(_ role: String, of bundle: URL) -> Bool {
+    let open = Process()
+    open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    open.arguments = ["-g", "-n", "-a", bundle.path, "--args", role]
+    do { try open.run(); open.waitUntilExit() } catch { log("error: could not run /usr/bin/open to launch the \(role) role: \(error)"); return false }
+    guard open.terminationStatus == 0 else { log("error: open -g -n -a \(bundle.path) --args \(role) exited \(open.terminationStatus)"); return false }
+    return true
+}
+
 /// Sends the agent's output to the log, since a plist inside the bundle cannot name a path in the user's home.
 func redirectOutputToLog() {
     let fd = open(logPath, O_WRONLY | O_CREAT | O_APPEND, 0o644)

@@ -16,6 +16,9 @@ it quits itself to install an update, and that its next launch consumes.
 newer Claude Keeper exists and installs it. The agent launches one a day. Not to be confused with an
 update attempt, which is about Claude.
 
+**Donation reminder**: the panel that the `donation-reminder` role shows once, 14 days after setup
+was first completed, to ask for a donation. Avoid "nag" and "popup".
+
 **Owed instance**: an instance that is down because it quit for an update, or because the keeper
 quit it, and that the keeper must relaunch.
 

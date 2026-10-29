@@ -380,6 +380,8 @@ final class Keeper {
     var schemeRetryAfter = 0.0
     let started = Date().timeIntervalSince1970
     var lastUpdateCheck = load(LastUpdateCheck.self, from: lastUpdateCheckURL)
+    var donation = DonationState()
+    var donationReminderRetryAfter = 0.0
 
     func run() -> Never {
         log("claude-keeper \(version) watching \(instances.map { "\($0.name) (\($0.bundlePath))" }.joined(separator: ", "))")
@@ -394,12 +396,13 @@ final class Keeper {
                 case .restart(let why): log("restarting: \(why)"); exit(0)  // launchd's KeepAlive starts the bundle's current executable
                 case .uninstall(let why): log("unregistering: \(why)"); unregisterAfterTrash()
                 }
-                if tick % 60 == 0 { instances = discoverInstances() }
+                if tick % 60 == 0 { instances = discoverInstances(); donation = load(DonationState.self, from: donationStateURL) ?? DonationState() }
                 let now = Date().timeIntervalSince1970
                 let running = runningInstances(instances)
                 recordLastActive(running, now: now)
                 keepScheme(now: now)
                 checkForUpdatesIfDue(now: now)
+                remindAboutDonationIfDue(now: now)
                 if tick % 5 == 0 { activity.sample(running, now: now); recordPlacements(running) }
                 let observation = Observation(
                     running: running,
@@ -469,6 +472,19 @@ final class Keeper {
         lastUpdateCheck = LastUpdateCheck(ts: now)
         save(lastUpdateCheck, to: lastUpdateCheckURL)
         launchUpdateCheck(own)
+    }
+
+    /// Launches the `donation-reminder` role once `donationReminderDue`; see docs/donations.md. The role records in
+    /// `donation.json` that it showed the reminder, which the agent reads once a minute; until then, and when the role
+    /// never got its window on screen, the agent waits `donationReminderRetry` before it launches the role again.
+    func remindAboutDonationIfDue(now: Double) {
+        if ownBundle != nil && donation.setupCompleted == nil {  // a running agent means setup is done, also for users who never reopen the window
+            updateDonationState { $0.setupCompleted = $0.setupCompleted ?? now }
+            donation = load(DonationState.self, from: donationStateURL) ?? donation
+        }
+        guard let own = ownBundle, now >= donationReminderRetryAfter, donationReminderDue(now: now, state: donation) else { return }
+        donationReminderRetryAfter = now + donationReminderRetry
+        if launchRole("donation-reminder", of: own) { log("launched the donation reminder") }
     }
 
     /// The pid that owns the frontmost normal window. `NSWorkspace.frontmostApplication` never changes in the agent,
@@ -666,6 +682,7 @@ func selftest() -> Int32 {
     }
     failures += linkSelftest()
     failures += updateSelftest()
+    failures += donationSelftest()
     return failures == 0 ? 0 : 1
 }
 
@@ -711,6 +728,7 @@ case "restore":
     keeper.relaunch(names.isEmpty ? keeper.instances.map(\.name) : names)
 case "version", "--version": print(version)
 case "check-for-updates": MainActor.assumeIsolated { runUpdateCheck() }
+case "donation-reminder": MainActor.assumeIsolated { runDonationReminder() }
 case "run":
     if getppid() == 1 { redirectOutputToLog() }
     Keeper().run()
@@ -726,8 +744,9 @@ case "agent":
     print("agent: \(SetupState.current().agent)\(LegacyAgent.installed ? ", v0.1 agent still installed" : "")")
 case "snapshot":
     guard let dir = CommandLine.arguments.dropFirst(2).first else { print("usage: claude-keeper snapshot <directory>"); exit(2) }
-    MainActor.assumeIsolated { renderSnapshots(to: URL(fileURLWithPath: dir)); renderChooserSnapshots(to: URL(fileURLWithPath: dir)) }
+    let url = URL(fileURLWithPath: dir)
+    MainActor.assumeIsolated { renderSnapshots(to: url); renderChooserSnapshots(to: url); renderDonationReminderSnapshots(to: url) }
 case "help", "--help", "-h":
-    print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | check-for-updates | version]; with no arguments, opens the setup window")
+    print("usage: claude-keeper [run | status | agent [on | off] | selftest | switch <n> | restore [instance...] | snapshot <dir> | check-for-updates | donation-reminder | version]; with no arguments, opens the setup window")
 default: MainActor.assumeIsolated { runApp() }
 }

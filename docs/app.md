@@ -1,6 +1,6 @@
 # The app and its agent
 
-`Claude Keeper.app` has one executable, `Contents/MacOS/ClaudeKeeper`, with four roles:
+`Claude Keeper.app` has one executable, `Contents/MacOS/ClaudeKeeper`, with five roles:
 
 * Opened from Finder (no arguments), it shows the setup window. It never runs in the background.
 * Started by launchd as `ClaudeKeeper run`, it is the agent. launchd starts it directly, not
@@ -11,6 +11,9 @@
   instance and quits. See [link-routing.md](link-routing.md).
 * Launched by the agent through LaunchServices as `ClaudeKeeper check-for-updates`, it runs one
   update check with Sparkle, without a window, and quits. See [updates.md](updates.md).
+* Launched by the agent through LaunchServices as `ClaudeKeeper donation-reminder`, 14 days after
+  setup was completed, it shows the donation reminder once and quits when the user answers it. See
+  [donations.md](donations.md).
 
 All roles have the same code identity (`dev.nevyn.ClaudeKeeper`, team M4Q2TE45WT), so the
 Accessibility grant that the setup window asks for applies to the agent, and the window's

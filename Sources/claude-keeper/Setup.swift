@@ -25,6 +25,8 @@ struct SetupState: Equatable {
     var desktopCount: Int
     var missingShortcuts: [Int]
     var linkRouting: LinkRouting = .off
+    /// Whether Claude Keeper still asks for a donation; see `DonationState.stillAsking`.
+    var asksForDonation = false
 
     var placementReady: Bool { accessibility && missingShortcuts.isEmpty }
     var done: Bool { agent == .on && placementReady }
@@ -45,7 +47,8 @@ struct SetupState: Equatable {
         return SetupState(location: location, instances: instances.map(\.name), agent: agent,
                           accessibility: AXIsProcessTrusted(), desktopCount: count,
                           missingShortcuts: (1...max(1, min(count, 16))).filter { desktopShortcut($0) == nil },
-                          linkRouting: linkRoutingState(instances))
+                          linkRouting: linkRoutingState(instances),
+                          asksForDonation: (load(DonationState.self, from: donationStateURL) ?? DonationState()).stillAsking)
     }
 
     private static func linkRoutingState(_ instances: [Instance]) -> LinkRouting {
@@ -88,6 +91,7 @@ final class Setup: ObservableObject {
     @Published private(set) var linkRoutingBusy = false
     private var timer: Timer?
     private var agentHasGrant = false
+    private var recordedSetupCompleted = false
 
     init(_ state: SetupState, live: Bool) {
         self.state = state
@@ -105,6 +109,10 @@ final class Setup: ObservableObject {
         if next.accessibility && next.agent == .on && !agentHasGrant {
             restartAgent()  // the agent cannot see a grant made after it started; see docs/app.md
             agentHasGrant = true
+        }
+        if next.done && !recordedSetupCompleted {
+            recordedSetupCompleted = true
+            updateDonationState { $0.setupCompleted = $0.setupCompleted ?? Date().timeIntervalSince1970 }
         }
     }
 
@@ -162,6 +170,11 @@ final class Setup: ObservableObject {
     func allowAccessibility() {
         _ = CGRequestPostEventAccess()  // adds Claude Keeper to the list, so that the user only flips its switch
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    func donate() {
+        claude_keeper.donate()
+        refresh()
     }
 
     func openShortcutSettings() { open("x-apple.systempreferences:com.apple.Keyboard-Settings.extension") }
@@ -297,6 +310,22 @@ struct SetupView: View {
     private var turnOffButton: some View { Button("Turn Off", action: setup.turnOffLinkRouting) }
 
     private var footer: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if state.done && state.asksForDonation { donationLine }
+            footerButtons
+        }
+    }
+
+    private var donationLine: some View {
+        HStack {
+            Text("Claude Keeper is free. If it keeps your Claudes running, consider chipping in €20.")
+                .font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 16)
+            Button("Donate…", action: setup.donate)
+        }
+    }
+
+    private var footerButtons: some View {
         HStack {
             Text(state.done ? "All set. The keeper runs in the background; to uninstall, drag Claude Keeper to the Trash."
                  : "Desktop placement is optional; without it, instances relaunch on the current desktop.")
@@ -418,6 +447,8 @@ extension SetupState {
         ("fresh", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .off, accessibility: false, desktopCount: 3, missingShortcuts: [2, 3])),
         ("agent-on", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .on, accessibility: false, desktopCount: 3, missingShortcuts: [2, 3])),
         ("done", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .on, accessibility: true, desktopCount: 3, missingShortcuts: [])),
+        ("done-donation", SetupState(location: .applications, instances: ["Claude", "Claude (Personal)"], agent: .on, accessibility: true, desktopCount: 3,
+                                     missingShortcuts: [], asksForDonation: true)),
         ("single-instance", SetupState(location: .applications, instances: ["Claude"], agent: .off, accessibility: false, desktopCount: 1, missingShortcuts: [])),
         ("translocated", SetupState(location: .translocated, instances: ["Claude", "Claude (Personal)"], agent: .off, accessibility: false, desktopCount: 3, missingShortcuts: [2, 3])),
         ("link-routing-off", linkRouting(.off)),
@@ -450,7 +481,9 @@ func retinaSnapshot(of view: NSView) -> NSBitmapImageRep? {
 @MainActor
 func renderSnapshots(to dir: URL) {
     _ = NSApplication.shared
-    if let icon = Bundle.main.image(forResource: "AppIcon") { NSApp.applicationIconImage = icon }
+    if let icon = Bundle.main.image(forResource: "AppIcon") ?? NSImage(contentsOfFile: "app/AppIcon.icns") {  // the latter under `swift run` in the package
+        NSApp.applicationIconImage = icon
+    }
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     for (name, state) in SetupState.examples {
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
